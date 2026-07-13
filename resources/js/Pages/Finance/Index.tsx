@@ -50,7 +50,7 @@ export default function FinanceIndex({ categories, expenses, stats, byCategory, 
                         <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={11} stroke="#a1a1aa" />
                         <Tooltip
                             cursor={{ fill: 'rgba(124,58,237,0.06)' }}
-                            formatter={(v: number) => [formatMoney(v), 'Total']}
+                            formatter={(v) => [formatMoney(v as number), 'Total']}
                             contentStyle={{ borderRadius: 14, border: 'none', boxShadow: '0 8px 30px -6px rgba(16,24,40,0.14)', fontSize: 13 }}
                         />
                         <Bar dataKey="total" radius={[8, 8, 8, 8]} fill="#7c3aed" maxBarSize={34} />
@@ -69,7 +69,7 @@ export default function FinanceIndex({ categories, expenses, stats, byCategory, 
                                     <Pie data={byCategory} dataKey="total" nameKey="name" innerRadius={38} outerRadius={62} paddingAngle={2} stroke="none">
                                         {byCategory.map((_, i) => <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />)}
                                     </Pie>
-                                    <Tooltip formatter={(v: number) => formatMoney(v)} contentStyle={{ borderRadius: 14, border: 'none', fontSize: 13 }} />
+                                    <Tooltip formatter={(v) => formatMoney(v as number)} contentStyle={{ borderRadius: 14, border: 'none', fontSize: 13 }} />
                                 </PieChart>
                             </ResponsiveContainer>
                             <div className="flex-1 space-y-1.5">
