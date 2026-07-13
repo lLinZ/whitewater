@@ -1,0 +1,17 @@
+{
+    "name": "Whitewater",
+    "short_name": "Whitewater",
+    "description": "El hogar, organizado: menú, mercado, finanzas y rutinas.",
+    "start_url": "/dashboard",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "portrait",
+    "background_color": "#F5F5F7",
+    "theme_color": "#7c3aed",
+    "lang": "es",
+    "icons": [
+        { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+        { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+        { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    ]
+}
