@@ -50,6 +50,7 @@ export default function MarketIndex({ trips }: { trips: ShoppingTrip[] }) {
                                             <p className="text-xs text-default-400">
                                                 {formatDate(t.created_at)} · {t.item_count} {t.item_count === 1 ? 'producto' : 'productos'}
                                                 {t.status === 'active' && <span className="ml-1 text-emerald-500">· activo</span>}
+                                                {t.pending_price_count > 0 && <span className="ml-1 text-amber-500">· {t.pending_price_count} sin precio</span>}
                                                 {t.has_expense && <Receipt size={11} className="ml-1 inline text-default-400" />}
                                             </p>
                                         </div>

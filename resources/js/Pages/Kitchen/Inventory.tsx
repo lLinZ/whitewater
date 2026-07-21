@@ -7,6 +7,7 @@ import { Plus, Minus, Trash2, ShoppingCart } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import KitchenNav from '@/Components/ui/KitchenNav';
 import { Card, SectionHeader, EmptyState } from '@/Components/ui/primitives';
+import DecimalInput from '@/Components/ui/DecimalInput';
 import { Ingredient } from '@/types';
 
 interface Projection { ingredient_id: number; name: string; quantity: number; unit: string }
@@ -110,10 +111,10 @@ function AddIngredientModal({ disclosure }: { disclosure: ReturnType<typeof useD
                         <Input autoFocus label="Nombre" placeholder="Arroz" value={form.name} onValueChange={(v) => setForm({ ...form, name: v })} isRequired />
                         <Input label="Categoría (opcional)" placeholder="Granos" value={form.category} onValueChange={(v) => setForm({ ...form, category: v })} />
                         <div className="flex gap-2">
-                            <Input className="flex-1" type="number" step="0.01" label="Cantidad" value={form.stock} onValueChange={(v) => setForm({ ...form, stock: v })} isRequired />
+                            <DecimalInput className="flex-1" label="Cantidad" value={form.stock} onValueChange={(v) => setForm({ ...form, stock: v })} isRequired />
                             <Input className="flex-1" label="Unidad" value={form.unit} onValueChange={(v) => setForm({ ...form, unit: v })} isRequired />
                         </div>
-                        <Input type="number" step="0.01" label="Stock mínimo (alerta)" value={form.min_stock} onValueChange={(v) => setForm({ ...form, min_stock: v })} />
+                        <DecimalInput label="Stock mínimo (alerta)" value={form.min_stock} onValueChange={(v) => setForm({ ...form, min_stock: v })} />
                     </ModalBody>
                     <ModalFooter>
                         <Button variant="light" onPress={disclosure.onClose}>Cancelar</Button>

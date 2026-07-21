@@ -74,28 +74,34 @@ class MarketController extends Controller
     }
 
     /**
-     * Catálogo de productos ya comprados alguna vez: nombre, veces comprado
-     * y último precio conocido. Sirve para autocompletar en el próximo mercado.
+     * Catálogo de productos ya comprados alguna vez, distinguidos por
+     * producto + marca + presentación (Harina · Harina PAN · 1 kg), con las
+     * veces comprado y el último precio conocido. Sirve para autocompletar.
      */
     private function productCatalog(): array
     {
         $grouped = ShoppingItem::query()
-            ->selectRaw('name, COUNT(*) as cnt, MAX(id) as last_id')
-            ->groupBy('name')
+            // El último precio conocido ignora los productos anotados sin
+            // precio: si no, un pendiente reciente borraría la sugerencia.
+            ->selectRaw('name, brand, size, COUNT(*) as cnt, MAX(CASE WHEN unit_price_usd IS NOT NULL THEN id END) as last_priced_id')
+            ->groupBy('name', 'brand', 'size')
             ->orderByRaw('MAX(id) DESC') // los comprados más recientemente primero
-            ->limit(300)
+            ->limit(400)
             ->get();
 
-        $lastItems = ShoppingItem::whereIn('id', $grouped->pluck('last_id'))
+        $lastItems = ShoppingItem::whereIn('id', $grouped->pluck('last_priced_id')->filter())
             ->get(['id', 'unit_price_usd', 'created_at'])
             ->keyBy('id');
 
         return $grouped->map(function ($row) use ($lastItems) {
-            $last = $lastItems->get($row->last_id);
+            $last = $row->last_priced_id ? $lastItems->get($row->last_priced_id) : null;
             return [
                 'name' => $row->name,
+                'brand' => $row->brand,
+                'size' => $row->size,
+                'label' => ShoppingItem::buildLabel($row->name, $row->brand, $row->size),
                 'count' => (int) $row->cnt,
-                'last_price' => (float) ($last->unit_price_usd ?? 0),
+                'last_price' => $last ? (float) $last->unit_price_usd : null,
                 'last_date' => optional($last?->created_at)->toIso8601String(),
             ];
         })->values()->all();
@@ -103,19 +109,47 @@ class MarketController extends Controller
 
     public function addItem(Request $request, ShoppingTrip $trip)
     {
+        $trip->items()->create($this->itemPayload($request));
+
+        return back(303);
+    }
+
+    public function updateItem(Request $request, ShoppingTrip $trip, ShoppingItem $item)
+    {
+        abort_unless($item->shopping_trip_id === $trip->id, 404);
+        $item->update($this->itemPayload($request));
+
+        return back(303);
+    }
+
+    /**
+     * Campos de un producto. El precio es opcional: se puede anotar el
+     * producto en el súper y completarlo al llegar a casa.
+     */
+    private function itemPayload(Request $request): array
+    {
         $data = $request->validate([
             'name' => 'required|string|max:120',
-            'unit_price_usd' => 'required|numeric|min:0',
+            'brand' => 'nullable|string|max:120',
+            'size' => 'nullable|string|max:60',
+            'unit_price_usd' => 'nullable|numeric|min:0',
             'quantity' => 'nullable|numeric|min:0.01',
         ]);
 
-        $trip->items()->create([
-            'name' => $data['name'],
-            'unit_price_usd' => $data['unit_price_usd'],
+        return [
+            'name' => trim($data['name']),
+            'brand' => $this->nullIfBlank($data['brand'] ?? null),
+            'size' => $this->nullIfBlank($data['size'] ?? null),
+            'unit_price_usd' => $data['unit_price_usd'] ?? null,
             'quantity' => $data['quantity'] ?? 1,
-        ]);
+        ];
+    }
 
-        return back(303);
+    private function nullIfBlank(?string $value): ?string
+    {
+        $value = trim((string) $value);
+
+        return $value === '' ? null : $value;
     }
 
     public function deleteItem(ShoppingTrip $trip, ShoppingItem $item)
@@ -171,6 +205,7 @@ class MarketController extends Controller
             'created_at' => optional($trip->created_at)->toDateString(),
             'total_usd' => $trip->total_usd,
             'item_count' => $trip->item_count,
+            'pending_price_count' => $trip->pending_price_count,
             'rates' => [
                 'bcv_usd' => $trip->rate_bcv_usd !== null ? (float) $trip->rate_bcv_usd : null,
                 'parallel_usd' => $trip->rate_parallel_usd !== null ? (float) $trip->rate_parallel_usd : null,
@@ -180,7 +215,10 @@ class MarketController extends Controller
             'items' => $trip->relationLoaded('items') ? $trip->items->map(fn ($i) => [
                 'id' => $i->id,
                 'name' => $i->name,
-                'unit_price_usd' => (float) $i->unit_price_usd,
+                'brand' => $i->brand,
+                'size' => $i->size,
+                'label' => $i->label,
+                'unit_price_usd' => $i->unit_price_usd !== null ? (float) $i->unit_price_usd : null,
                 'quantity' => (float) $i->quantity,
                 'subtotal_usd' => $i->subtotal_usd,
             ])->values() : [],

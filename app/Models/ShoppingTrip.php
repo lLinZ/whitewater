@@ -14,7 +14,7 @@ class ShoppingTrip extends Model
         'rate_bcv_eur' => 'decimal:4',
     ];
 
-    protected $appends = ['total_usd', 'item_count'];
+    protected $appends = ['total_usd', 'item_count', 'pending_price_count'];
 
     public function items()
     {
@@ -47,6 +47,14 @@ class ShoppingTrip extends Model
         return $this->relationLoaded('items')
             ? $this->items->count()
             : $this->items()->count();
+    }
+
+    /** Productos anotados sin precio todavía (se completan al llegar a casa). */
+    public function getPendingPriceCountAttribute(): int
+    {
+        return $this->relationLoaded('items')
+            ? $this->items->whereNull('unit_price_usd')->count()
+            : $this->items()->whereNull('unit_price_usd')->count();
     }
 
     /**

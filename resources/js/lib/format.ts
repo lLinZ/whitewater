@@ -60,6 +60,25 @@ export function convertUsd(usd: number, r?: RateLike | null) {
     };
 }
 
+/**
+ * Deja solo dígitos y UN separador decimal, aceptando coma o punto.
+ * En iPhone (teclado en español) la tecla decimal es una coma, y un
+ * <input type="number"> la descarta silenciosamente: por eso los campos de
+ * montos son type="text" + inputMode="decimal" y pasan por aquí.
+ */
+export function sanitizeDecimal(raw: string): string {
+    const cleaned = raw.replace(/,/g, '.').replace(/[^\d.]/g, '');
+    const [head, ...rest] = cleaned.split('.');
+    return rest.length ? `${head}.${rest.join('')}` : head;
+}
+
+/** Número a partir de lo que escribió el usuario ('' o basura → null). */
+export function parseDecimal(raw: string | null | undefined): number | null {
+    if (raw === null || raw === undefined || raw === '') return null;
+    const n = parseFloat(sanitizeDecimal(String(raw)));
+    return Number.isFinite(n) ? n : null;
+}
+
 export function fromNow(date: string | Date): string {
     return dayjs(date).fromNow();
 }

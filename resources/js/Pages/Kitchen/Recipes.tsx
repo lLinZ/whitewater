@@ -8,6 +8,7 @@ import { Plus, Trash2, Clock, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import KitchenNav from '@/Components/ui/KitchenNav';
 import { Card, EmptyState } from '@/Components/ui/primitives';
+import DecimalInput from '@/Components/ui/DecimalInput';
 import { Recipe, Ingredient } from '@/types';
 
 interface Props { recipes: Recipe[]; ingredients: Ingredient[] }
@@ -122,7 +123,7 @@ export default function Recipes({ recipes, ingredients }: Props) {
                                                 onSelectionChange={(k) => setLine(idx, { ingredient_id: String(Array.from(k)[0] ?? '') })}>
                                                 {ingredients.map((i) => <SelectItem key={String(i.id)}>{i.name}</SelectItem>)}
                                             </Select>
-                                            <Input aria-label="Cantidad" size="sm" type="number" className="w-16" placeholder="Cant." value={l.quantity} onValueChange={(v) => setLine(idx, { quantity: v })} />
+                                            <DecimalInput aria-label="Cantidad" size="sm" className="w-16" placeholder="Cant." value={l.quantity} onValueChange={(v) => setLine(idx, { quantity: v })} />
                                             <Input aria-label="Unidad" size="sm" className="w-20" placeholder="unid." value={l.unit} onValueChange={(v) => setLine(idx, { unit: v })} />
                                             <button type="button" onClick={() => removeLine(idx)} className="text-default-300"><X size={16} /></button>
                                         </div>

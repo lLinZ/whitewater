@@ -9,6 +9,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import Ring from '@/Components/ui/Ring';
 import { Card, EmptyState, MemberBadge } from '@/Components/ui/primitives';
 import AmountModal from '@/Components/ui/AmountModal';
+import DecimalInput from '@/Components/ui/DecimalInput';
 import { formatMoney, formatMoneyShort, formatDate } from '@/lib/format';
 import { accent } from '@/lib/accent';
 import { Debt, SavingsGoal } from '@/types';
@@ -218,8 +219,8 @@ function NewDebtModal({ disclosure }: { disclosure: ReturnType<typeof useDisclos
                             <Input className="w-16" label="Emoji" value={form.emoji} onValueChange={(v) => setForm({ ...form, emoji: v })} />
                             <Input className="flex-1" label="Nombre" placeholder="Carro" value={form.name} onValueChange={(v) => setForm({ ...form, name: v })} isRequired />
                         </div>
-                        <Input type="number" step="0.01" label="Monto total" startContent="$" value={form.total_amount} onValueChange={(v) => setForm({ ...form, total_amount: v })} isRequired />
-                        <Input type="number" step="0.01" label="Cuota mensual (opcional)" startContent="$" value={form.monthly_payment} onValueChange={(v) => setForm({ ...form, monthly_payment: v })} />
+                        <DecimalInput label="Monto total" startContent="$" value={form.total_amount} onValueChange={(v) => setForm({ ...form, total_amount: v })} isRequired />
+                        <DecimalInput label="Cuota mensual (opcional)" startContent="$" value={form.monthly_payment} onValueChange={(v) => setForm({ ...form, monthly_payment: v })} />
                     </ModalBody>
                     <ModalFooter>
                         <Button variant="light" onPress={disclosure.onClose}>Cancelar</Button>
@@ -253,7 +254,7 @@ function NewGoalModal({ disclosure }: { disclosure: ReturnType<typeof useDisclos
                             <Input className="w-16" label="Emoji" value={form.emoji} onValueChange={(v) => setForm({ ...form, emoji: v })} />
                             <Input className="flex-1" label="Nombre" placeholder="Negocio Crotone" value={form.name} onValueChange={(v) => setForm({ ...form, name: v })} isRequired />
                         </div>
-                        <Input type="number" step="0.01" label="Meta" startContent="$" value={form.target_amount} onValueChange={(v) => setForm({ ...form, target_amount: v })} isRequired />
+                        <DecimalInput label="Meta" startContent="$" value={form.target_amount} onValueChange={(v) => setForm({ ...form, target_amount: v })} isRequired />
                         <Input type="date" label="Fecha objetivo (opcional)" value={form.target_date} onValueChange={(v) => setForm({ ...form, target_date: v })} />
                     </ModalBody>
                     <ModalFooter>

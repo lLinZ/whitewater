@@ -1,16 +1,25 @@
-import { FormEvent, useRef, useState } from 'react';
+import { FormEvent, useMemo, useRef, useState } from 'react';
 import { Head, router } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-    Button, Input, Autocomplete, AutocompleteItem, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Switch,
+    Button, Autocomplete, AutocompleteItem, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Switch,
 } from '@heroui/react';
-import { Plus, Trash2, ArrowUp, ArrowDown, Check } from 'lucide-react';
+import { Plus, Trash2, ArrowUp, ArrowDown, Check, Pencil } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card } from '@/Components/ui/primitives';
-import { formatMoney, formatBs, formatEur, convertUsd, fromNow } from '@/lib/format';
-import { ShoppingTrip } from '@/types';
+import DecimalInput from '@/Components/ui/DecimalInput';
+import { formatMoney, formatBs, formatEur, convertUsd, fromNow, parseDecimal } from '@/lib/format';
+import { ShoppingTrip, ShoppingItem } from '@/types';
 
-interface CatalogItem { name: string; count: number; last_price: number; last_date: string | null }
+interface CatalogItem {
+    name: string;
+    brand: string | null;
+    size: string | null;
+    label: string;
+    count: number;
+    last_price: number | null;
+    last_date: string | null;
+}
 
 interface Props {
     trip: ShoppingTrip;
@@ -18,37 +27,186 @@ interface Props {
     catalog: CatalogItem[];
 }
 
+interface Draft {
+    name: string;
+    brand: string;
+    size: string;
+    price: string;
+    qty: string;
+}
+
+const EMPTY: Draft = { name: '', brand: '', size: '', price: '', qty: '1' };
+
+/** Presentaciones típicas, para que las sugerencias no estén vacías al empezar. */
+const COMMON_SIZES = ['1 kg', '500 g', '250 g', '200 g', '1 L', '500 ml', 'Unidad'];
+
+const norm = (s: string) => s.trim().toLowerCase();
+
+const flatInput = { inputWrapper: 'bg-default-100 group-data-[focus=true]:bg-default-100 shadow-none' };
+
+const draftPayload = (d: Draft) => ({
+    name: d.name.trim(),
+    brand: d.brand.trim() || null,
+    size: d.size.trim() || null,
+    unit_price_usd: parseDecimal(d.price),
+    quantity: parseDecimal(d.qty) ?? 1,
+});
+
+/**
+ * Producto + marca + presentación. Elegir del catálogo rellena los tres
+ * campos (y el último precio) de un toque; también se puede escribir libre.
+ */
+function ProductFields({
+    draft, patch, catalog, nameRef, autoFocus = false,
+}: {
+    draft: Draft;
+    patch: (p: Partial<Draft>) => void;
+    catalog: CatalogItem[];
+    nameRef?: React.RefObject<HTMLInputElement>;
+    autoFocus?: boolean;
+}) {
+    // Marcas y presentaciones ya usadas para este producto; si es uno nuevo,
+    // se ofrecen todas las conocidas.
+    const { brands, sizes } = useMemo(() => {
+        const forName = draft.name.trim()
+            ? catalog.filter((c) => norm(c.name) === norm(draft.name))
+            : [];
+        const pool = forName.length ? forName : catalog;
+        return {
+            brands: [...new Set(pool.map((c) => c.brand).filter((b): b is string => !!b))],
+            sizes: [...new Set([...pool.map((c) => c.size).filter((s): s is string => !!s), ...COMMON_SIZES])],
+        };
+    }, [catalog, draft.name]);
+
+    return (
+        <>
+            <Autocomplete
+                ref={nameRef} autoFocus={autoFocus} aria-label="Producto" placeholder="Producto"
+                allowsCustomValue menuTrigger="input"
+                size="md" radius="lg" variant="flat" className="w-full"
+                inputValue={draft.name}
+                onInputChange={(v) => patch({ name: v })}
+                onSelectionChange={(key) => {
+                    if (!key) return;
+                    const found = catalog.find((c) => c.label === String(key));
+                    if (!found) return;
+                    patch({
+                        name: found.name,
+                        brand: found.brand ?? '',
+                        size: found.size ?? '',
+                        ...(found.last_price !== null ? { price: String(found.last_price) } : {}),
+                    });
+                }}
+                inputProps={{ autoComplete: 'off', classNames: flatInput }}
+            >
+                {catalog.map((c) => (
+                    <AutocompleteItem key={c.label} textValue={c.label}>
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                                <p className="truncate">{c.name}</p>
+                                {(c.brand || c.size) && (
+                                    <p className="truncate text-xs text-default-400">
+                                        {[c.brand, c.size].filter(Boolean).join(' · ')}
+                                    </p>
+                                )}
+                            </div>
+                            <span className="shrink-0 text-xs text-default-400">
+                                {c.last_price !== null ? `$${c.last_price.toFixed(2)}` : ''}{c.count > 1 ? ` · ${c.count}×` : ''}
+                            </span>
+                        </div>
+                    </AutocompleteItem>
+                ))}
+            </Autocomplete>
+
+            <div className="flex items-center gap-2">
+                <Autocomplete
+                    aria-label="Marca" placeholder="Marca" allowsCustomValue menuTrigger="input"
+                    size="md" radius="lg" variant="flat" className="flex-1"
+                    inputValue={draft.brand}
+                    onInputChange={(v) => patch({ brand: v })}
+                    onSelectionChange={(key) => key && patch({ brand: String(key) })}
+                    inputProps={{ autoComplete: 'off', classNames: flatInput }}
+                >
+                    {brands.map((b) => <AutocompleteItem key={b}>{b}</AutocompleteItem>)}
+                </Autocomplete>
+                <Autocomplete
+                    aria-label="Presentación" placeholder="Presentación" allowsCustomValue menuTrigger="input"
+                    size="md" radius="lg" variant="flat" className="flex-1"
+                    inputValue={draft.size}
+                    onInputChange={(v) => patch({ size: v })}
+                    onSelectionChange={(key) => key && patch({ size: String(key) })}
+                    inputProps={{ autoComplete: 'off', classNames: flatInput }}
+                >
+                    {sizes.map((s) => <AutocompleteItem key={s}>{s}</AutocompleteItem>)}
+                </Autocomplete>
+            </div>
+        </>
+    );
+}
+
 export default function MarketShow({ trip, previous, catalog }: Props) {
-    const [name, setName] = useState('');
-    const [price, setPrice] = useState('');
-    const [qty, setQty] = useState('1');
+    const [draft, setDraft] = useState<Draft>(EMPTY);
+    const [editing, setEditing] = useState<ShoppingItem | null>(null);
+    const [editDraft, setEditDraft] = useState<Draft>(EMPTY);
     const nameRef = useRef<HTMLInputElement>(null);
     const finishModal = useDisclosure();
     const [asExpense, setAsExpense] = useState(true);
 
+    const patch = (p: Partial<Draft>) => setDraft((d) => ({ ...d, ...p }));
+    const patchEdit = (p: Partial<Draft>) => setEditDraft((d) => ({ ...d, ...p }));
+
     const total = convertUsd(trip.total_usd, trip.rates);
-    const livePreview = price ? convertUsd((parseFloat(price) || 0) * (parseFloat(qty) || 1), trip.rates) : null;
+    const draftPrice = parseDecimal(draft.price);
+    const livePreview = draftPrice !== null
+        ? convertUsd(draftPrice * (parseDecimal(draft.qty) ?? 1), trip.rates)
+        : null;
     const delta = previous ? trip.total_usd - previous.total_usd : null;
-    const matched = name.trim()
-        ? catalog.find((c) => c.name.toLowerCase() === name.trim().toLowerCase())
+    const pending = trip.pending_price_count;
+
+    // Último precio conocido de este producto+marca+presentación exacto.
+    const matched = draft.name.trim()
+        ? catalog.find((c) => c.label === [draft.name, draft.brand, draft.size]
+            .map((p) => p.trim()).filter(Boolean).join(' · '))
         : undefined;
 
     const addItem = (e: FormEvent) => {
         e.preventDefault();
-        if (!name || !price) return;
-        router.post(`/mercado/${trip.id}/item`, {
-            name, unit_price_usd: price, quantity: qty || 1,
-        }, {
+        if (!draft.name.trim()) return;
+        router.post(`/mercado/${trip.id}/item`, draftPayload(draft), {
             preserveScroll: true,
             preserveState: true,
             onSuccess: () => {
-                setName(''); setPrice(''); setQty('1');
+                setDraft(EMPTY);
                 nameRef.current?.focus();
             },
         });
     };
 
-    const delItem = (id: number) => router.delete(`/mercado/${trip.id}/item/${id}`, { preserveScroll: true, preserveState: true });
+    const openEdit = (it: ShoppingItem) => {
+        setEditing(it);
+        setEditDraft({
+            name: it.name,
+            brand: it.brand ?? '',
+            size: it.size ?? '',
+            price: it.unit_price_usd !== null ? String(it.unit_price_usd) : '',
+            qty: String(it.quantity),
+        });
+    };
+
+    const saveEdit = () => {
+        if (!editing || !editDraft.name.trim()) return;
+        router.patch(`/mercado/${trip.id}/item/${editing.id}`, draftPayload(editDraft), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => setEditing(null),
+        });
+    };
+
+    const delItem = (id: number) => router.delete(`/mercado/${trip.id}/item/${id}`, {
+        preserveScroll: true,
+        preserveState: true,
+        onSuccess: () => setEditing(null),
+    });
 
     const finish = () => {
         router.post(`/mercado/${trip.id}/terminar`, { as_expense: asExpense }, { onSuccess: () => finishModal.onClose() });
@@ -57,7 +215,7 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
     return (
         <AppLayout
             title={trip.name}
-            subtitle={`${trip.item_count} productos`}
+            subtitle={`${trip.item_count} productos${pending > 0 ? ` · ${pending} sin precio` : ''}`}
             back="/mercado"
             right={
                 trip.status === 'active'
@@ -85,6 +243,11 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                         <p className="text-sm font-bold tabular-nums">{formatEur(total.eur)}</p>
                     </div>
                 </div>
+                {pending > 0 && (
+                    <p className="mt-3 rounded-2xl bg-white/15 px-3 py-2 text-center text-xs">
+                        {pending} {pending === 1 ? 'producto' : 'productos'} sin precio — tócalo{pending === 1 ? '' : 's'} para completarlo{pending === 1 ? '' : 's'}
+                    </p>
+                )}
                 {delta !== null && Math.abs(delta) > 0.005 && (
                     <div className="mt-3 flex items-center justify-center gap-1 text-sm">
                         {delta > 0 ? <ArrowUp size={14} /> : <ArrowDown size={14} />}
@@ -99,54 +262,26 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                 <form onSubmit={addItem} className="mt-3">
                     <Card className="!p-3">
                         <div className="flex flex-col gap-2">
-                            <Autocomplete
-                                ref={nameRef} autoFocus aria-label="Producto" placeholder="Producto"
-                                allowsCustomValue menuTrigger="input"
-                                size="md" radius="lg" variant="flat" className="w-full"
-                                inputValue={name}
-                                onInputChange={setName}
-                                onSelectionChange={(key) => {
-                                    if (!key) return;
-                                    const found = catalog.find((c) => c.name === String(key));
-                                    if (found) {
-                                        setName(found.name);
-                                        if (found.last_price) setPrice(String(found.last_price));
-                                    }
-                                }}
-                                inputProps={{
-                                    autoComplete: 'off',
-                                    classNames: { inputWrapper: 'bg-default-100 group-data-[focus=true]:bg-default-100 shadow-none' },
-                                }}
-                            >
-                                {catalog.map((c) => (
-                                    <AutocompleteItem key={c.name} textValue={c.name}>
-                                        <div className="flex items-center justify-between gap-2">
-                                            <span className="truncate">{c.name}</span>
-                                            <span className="shrink-0 text-xs text-default-400">
-                                                {c.last_price ? `$${c.last_price.toFixed(2)}` : ''}{c.count > 1 ? ` · ${c.count}×` : ''}
-                                            </span>
-                                        </div>
-                                    </AutocompleteItem>
-                                ))}
-                            </Autocomplete>
+                            <ProductFields draft={draft} patch={patch} catalog={catalog} nameRef={nameRef} autoFocus />
                             <div className="flex items-center gap-2">
-                                <Input
-                                    autoComplete="off" size="md" radius="lg" variant="flat" className="flex-1" type="number" step="0.01" inputMode="decimal" placeholder="Precio en $"
-                                    classNames={{ inputWrapper: 'bg-default-100 group-data-[focus=true]:bg-default-100 shadow-none' }}
-                                    startContent={<span className="text-sm text-default-400">$</span>} value={price} onValueChange={setPrice}
+                                <DecimalInput
+                                    size="md" radius="lg" variant="flat" className="flex-1" placeholder="Precio (opcional)"
+                                    classNames={flatInput}
+                                    startContent={<span className="text-sm text-default-400">$</span>}
+                                    value={draft.price} onValueChange={(v) => patch({ price: v })}
                                 />
-                                <Input
-                                    autoComplete="off" size="md" radius="lg" variant="flat" className="w-16" type="number" step="0.5" inputMode="decimal" placeholder="Cant"
-                                    classNames={{ inputWrapper: 'bg-default-100 group-data-[focus=true]:bg-default-100 shadow-none' }}
-                                    value={qty} onValueChange={setQty}
+                                <DecimalInput
+                                    size="md" radius="lg" variant="flat" className="w-16" placeholder="Cant"
+                                    classNames={flatInput}
+                                    value={draft.qty} onValueChange={(v) => patch({ qty: v })}
                                 />
-                                <Button isIconOnly color="primary" radius="full" size="lg" type="submit" isDisabled={!name || !price} className="h-12 w-12 min-w-12 shrink-0 shadow-soft">
+                                <Button isIconOnly color="primary" radius="full" size="lg" type="submit" isDisabled={!draft.name.trim()} className="h-12 w-12 min-w-12 shrink-0 shadow-soft">
                                     <Plus size={20} />
                                 </Button>
                             </div>
                         </div>
                         <AnimatePresence>
-                            {matched && matched.last_price > 0 && (
+                            {matched && matched.last_price !== null && (
                                 <motion.p
                                     key="hint"
                                     initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
@@ -177,17 +312,30 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                 )}
                 {trip.items.map((it) => {
                     const c = convertUsd(it.subtotal_usd, trip.rates);
+                    const noPrice = it.unit_price_usd === null;
                     return (
-                        <Card key={it.id} className="flex items-center gap-3 !py-2.5">
+                        <Card key={it.id} className="flex items-center gap-3 !py-2.5" onClick={() => openEdit(it)}>
                             <div className="min-w-0 flex-1">
-                                <p className="truncate font-medium">{it.name}</p>
-                                <p className="text-xs text-default-400">
-                                    {it.quantity} × {formatMoney(it.unit_price_usd)} · {formatBs(c.bcv)}
+                                <p className="truncate font-medium">
+                                    {it.name}
+                                    {it.size && <span className="ml-1.5 rounded-md bg-default-100 px-1.5 py-0.5 text-[11px] font-normal text-default-500">{it.size}</span>}
+                                </p>
+                                <p className="truncate text-xs text-default-400">
+                                    {it.brand && <span className="text-default-500">{it.brand} · </span>}
+                                    {noPrice
+                                        ? <span className="text-amber-500">Sin precio · toca para agregarlo</span>
+                                        : <>{it.quantity} × {formatMoney(it.unit_price_usd)} · {formatBs(c.bcv)}</>}
                                 </p>
                             </div>
-                            <span className="font-semibold tabular-nums">{formatMoney(it.subtotal_usd)}</span>
+                            {noPrice
+                                ? <Pencil size={16} className="shrink-0 text-amber-500" />
+                                : <span className="font-semibold tabular-nums">{formatMoney(it.subtotal_usd)}</span>}
                             {trip.status === 'active' && (
-                                <button onClick={() => delItem(it.id)} className="text-default-300 active:text-rose-500">
+                                <button
+                                    aria-label="Eliminar"
+                                    onClick={(e) => { e.stopPropagation(); delItem(it.id); }}
+                                    className="shrink-0 text-default-300 active:text-rose-500"
+                                >
                                     <Trash2 size={16} />
                                 </button>
                             )}
@@ -195,6 +343,33 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                     );
                 })}
             </div>
+
+            {/* Editar producto */}
+            <Modal isOpen={!!editing} onClose={() => setEditing(null)} placement="center" backdrop="blur" size="sm">
+                <ModalContent>
+                    <ModalHeader>Editar producto</ModalHeader>
+                    <ModalBody className="gap-2">
+                        <ProductFields draft={editDraft} patch={patchEdit} catalog={catalog} />
+                        <div className="flex items-center gap-2">
+                            <DecimalInput
+                                size="md" radius="lg" variant="flat" className="flex-1" placeholder="Precio (opcional)"
+                                classNames={flatInput}
+                                startContent={<span className="text-sm text-default-400">$</span>}
+                                value={editDraft.price} onValueChange={(v) => patchEdit({ price: v })}
+                            />
+                            <DecimalInput
+                                size="md" radius="lg" variant="flat" className="w-20" placeholder="Cant"
+                                classNames={flatInput}
+                                value={editDraft.qty} onValueChange={(v) => patchEdit({ qty: v })}
+                            />
+                        </div>
+                    </ModalBody>
+                    <ModalFooter>
+                        <Button variant="light" onPress={() => setEditing(null)}>Cancelar</Button>
+                        <Button color="primary" isDisabled={!editDraft.name.trim()} onPress={saveEdit}>Guardar</Button>
+                    </ModalFooter>
+                </ModalContent>
+            </Modal>
 
             {/* Terminar */}
             <Modal isOpen={finishModal.isOpen} onClose={finishModal.onClose} placement="center" backdrop="blur" size="sm">
@@ -204,6 +379,11 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                         <p className="text-sm text-default-500">
                             Total: <b className="text-foreground">{formatMoney(trip.total_usd)}</b> · {formatBs(total.bcv)}
                         </p>
+                        {pending > 0 && (
+                            <p className="rounded-2xl bg-amber-100 px-3 py-2 text-xs text-amber-700 dark:bg-amber-500/15 dark:text-amber-400">
+                                Ojo: {pending} {pending === 1 ? 'producto no tiene' : 'productos no tienen'} precio y no {pending === 1 ? 'suma' : 'suman'} al total.
+                            </p>
+                        )}
                         <div className="mt-2 flex items-center justify-between rounded-2xl bg-content2 px-3 py-3">
                             <div>
                                 <p className="text-sm font-medium">Guardar como gasto</p>

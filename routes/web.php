@@ -66,6 +66,7 @@ Route::middleware(['auth'])->group(function () {
     Route::post('/mercado', [MarketController::class, 'store'])->name('market.store');
     Route::get('/mercado/{trip}', [MarketController::class, 'show'])->name('market.show');
     Route::post('/mercado/{trip}/item', [MarketController::class, 'addItem'])->name('market.items.add');
+    Route::patch('/mercado/{trip}/item/{item}', [MarketController::class, 'updateItem'])->name('market.items.update');
     Route::delete('/mercado/{trip}/item/{item}', [MarketController::class, 'deleteItem'])->name('market.items.delete');
     Route::post('/mercado/{trip}/terminar', [MarketController::class, 'finish'])->name('market.finish');
     Route::delete('/mercado/{trip}', [MarketController::class, 'destroy'])->name('market.destroy');

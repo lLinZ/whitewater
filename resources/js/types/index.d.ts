@@ -129,7 +129,11 @@ export interface TripRates {
 export interface ShoppingItem {
     id: number;
     name: string;
-    unit_price_usd: number;
+    brand?: string | null;
+    size?: string | null;
+    label: string;
+    /** null = anotado sin precio todavía */
+    unit_price_usd: number | null;
     quantity: number;
     subtotal_usd: number;
 }
@@ -142,6 +146,7 @@ export interface ShoppingTrip {
     created_at: string;
     total_usd: number;
     item_count: number;
+    pending_price_count: number;
     rates: TripRates;
     has_expense: boolean;
     items: ShoppingItem[];

@@ -3,6 +3,7 @@ import {
     Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input,
 } from '@heroui/react';
 import { router } from '@inertiajs/react';
+import DecimalInput from '@/Components/ui/DecimalInput';
 import { today } from '@/lib/format';
 
 interface Props {
@@ -39,11 +40,8 @@ export default function AmountModal({
                 <form onSubmit={submit}>
                     <ModalHeader>{title}</ModalHeader>
                     <ModalBody className="gap-3">
-                        <Input
+                        <DecimalInput
                             autoFocus
-                            type="number"
-                            step="0.01"
-                            min="0"
                             label={amountLabel}
                             startContent={<span className="text-default-400">$</span>}
                             value={amount}

@@ -10,6 +10,7 @@ import {
 import { Plus, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, SectionHeader, StatTile, EmptyState, MemberBadge } from '@/Components/ui/primitives';
+import DecimalInput from '@/Components/ui/DecimalInput';
 import { formatMoney, formatMoneyShort, formatDate, today } from '@/lib/format';
 import { CHART_COLORS } from '@/lib/accent';
 import { Expense, ExpenseCategory } from '@/types';
@@ -138,7 +139,7 @@ function NewExpenseModal({ disclosure, categories }: { disclosure: ReturnType<ty
                 <form onSubmit={submit}>
                     <ModalHeader>Nuevo gasto</ModalHeader>
                     <ModalBody className="gap-3">
-                        <Input autoFocus type="number" step="0.01" min="0" label="Monto" startContent="$" size="lg"
+                        <DecimalInput autoFocus label="Monto" startContent="$" size="lg"
                             value={form.amount} onValueChange={(v) => setForm({ ...form, amount: v })} isRequired />
                         <Input label="Descripción" placeholder="Mercado del mes"
                             value={form.description} onValueChange={(v) => setForm({ ...form, description: v })} isRequired />

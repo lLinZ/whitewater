@@ -147,6 +147,73 @@ test('el catálogo sugiere productos ya comprados con su último precio', functi
         );
 });
 
+test('un producto se puede anotar sin precio y completarlo después', function () {
+    Http::fake();
+    actingAs($this->user);
+    $trip = ShoppingTrip::create(['name' => 'A', 'status' => 'active', 'created_by' => $this->user->id]);
+
+    $this->post("/mercado/{$trip->id}/item", ['name' => 'Arroz', 'quantity' => 2])->assertRedirect();
+
+    $trip->refresh();
+    expect($trip->items()->first()->unit_price_usd)->toBeNull();
+    expect($trip->pending_price_count)->toBe(1);
+    expect($trip->total_usd)->toBe(0.0);
+
+    $item = $trip->items()->first();
+    $this->patch("/mercado/{$trip->id}/item/{$item->id}", [
+        'name' => 'Arroz', 'unit_price_usd' => 3, 'quantity' => 2,
+    ])->assertRedirect();
+
+    $trip->refresh();
+    expect($trip->pending_price_count)->toBe(0);
+    expect($trip->total_usd)->toBe(6.0);
+});
+
+test('marca y presentación distinguen productos del mismo nombre', function () {
+    ExchangeRate::create(['bcv_usd' => 700, 'parallel_usd' => 800, 'bcv_eur' => 810, 'source' => 'test', 'fetched_at' => now()]);
+    Http::fake();
+    actingAs($this->user);
+
+    $t1 = ShoppingTrip::create(['name' => 'A', 'status' => 'done', 'created_by' => $this->user->id]);
+    $t1->items()->create(['name' => 'Café', 'brand' => 'Amanecer', 'size' => '1 kg', 'unit_price_usd' => 9, 'quantity' => 1]);
+    $t1->items()->create(['name' => 'Café', 'brand' => 'Amanecer', 'size' => '500 g', 'unit_price_usd' => 5, 'quantity' => 1]);
+
+    $t2 = ShoppingTrip::create(['name' => 'B', 'status' => 'active', 'created_by' => $this->user->id]);
+
+    $this->get("/mercado/{$t2->id}")
+        ->assertInertia(fn (Assert $p) => $p
+            ->component('Market/Show')
+            ->has('catalog', 2)
+            ->where('catalog.0.label', 'Café · Amanecer · 500 g')
+            ->where('catalog.1.label', 'Café · Amanecer · 1 kg')
+        );
+});
+
+test('el último precio del catálogo ignora los productos sin precio', function () {
+    ExchangeRate::create(['bcv_usd' => 700, 'parallel_usd' => 800, 'bcv_eur' => 810, 'source' => 'test', 'fetched_at' => now()]);
+    Http::fake();
+    actingAs($this->user);
+
+    $t1 = ShoppingTrip::create(['name' => 'A', 'status' => 'done', 'created_by' => $this->user->id]);
+    $t1->items()->create(['name' => 'Arroz', 'unit_price_usd' => 1.80, 'quantity' => 1]);
+    $t1->items()->create(['name' => 'Arroz', 'unit_price_usd' => null, 'quantity' => 1]); // anotado, sin precio
+
+    $t2 = ShoppingTrip::create(['name' => 'B', 'status' => 'active', 'created_by' => $this->user->id]);
+
+    $this->get("/mercado/{$t2->id}")
+        ->assertInertia(fn (Assert $p) => $p->where('catalog.0.last_price', 1.8));
+});
+
+test('editar un item ajeno a otro mercado da 404', function () {
+    actingAs($this->user);
+    $t1 = ShoppingTrip::create(['name' => 'A', 'status' => 'active', 'created_by' => $this->user->id]);
+    $t2 = ShoppingTrip::create(['name' => 'B', 'status' => 'active', 'created_by' => $this->user->id]);
+    $item = $t2->items()->create(['name' => 'x', 'unit_price_usd' => 1, 'quantity' => 1]);
+
+    $this->patch("/mercado/{$t1->id}/item/{$item->id}", ['name' => 'y'])->assertNotFound();
+    expect($item->fresh()->name)->toBe('x');
+});
+
 test('las tasas se comparten a todas las vistas Inertia', function () {
     ExchangeRate::create(['bcv_usd' => 700, 'parallel_usd' => 800, 'bcv_eur' => 810, 'source' => 'test', 'fetched_at' => now()]);
     Http::fake();
