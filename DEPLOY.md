@@ -108,6 +108,15 @@ sudo certbot --nginx -d whitewater.tudominio.com   # instala el certificado HTTP
 > Apunta el (sub)dominio a la IP del VPS en tu DNS antes de correr certbot.
 
 ## 8. Scheduler (dispara tasas y recordatorios)
+
+Algo tiene que llamar a `php artisan schedule:run` **cada minuto**. Eso es lo que
+ejecuta `rates:sync` (tasas 2x/día) y `routines:remind` (recordatorio de rutinas
+a la hora de `ROUTINE_REMINDER_TIME`). Sin esto las notificaciones no salen nunca.
+
+Hay dos formas; usa la que aplique a tu servidor.
+
+### Opción A: cron
+
 ```bash
 crontab -e
 ```
@@ -115,7 +124,58 @@ Añade:
 ```
 * * * * * cd /var/www/whitewater && php artisan schedule:run >> /dev/null 2>&1
 ```
-Esto ejecuta automáticamente: `rates:sync` (tasas 2x/día) y `routines:remind` (recordatorio de rutinas a la hora de `ROUTINE_REMINDER_TIME`).
+
+> Muchas imágenes de VPS vienen **sin cron** y `crontab` responde
+> `command not found`. Instálalo con `sudo apt install -y cron` y actívalo con
+> `sudo systemctl enable --now cron`, o usa la opción B.
+
+### Opción B: temporizador de systemd
+
+No necesita paquetes extra y deja el registro de cada ejecución en `journalctl`.
+
+`/etc/systemd/system/whitewater-scheduler.service`:
+```ini
+[Unit]
+Description=Scheduler de Whitewater
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+WorkingDirectory=/var/www/whitewater
+ExecStart=/usr/bin/php /var/www/whitewater/artisan schedule:run
+```
+
+`/etc/systemd/system/whitewater-scheduler.timer`:
+```ini
+[Unit]
+Description=Ejecuta el scheduler de Whitewater cada minuto
+
+[Timer]
+OnCalendar=*:0/1
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now whitewater-scheduler.timer
+systemctl list-timers whitewater-scheduler.timer   # comprueba que tiene próxima ejecución
+journalctl -u whitewater-scheduler.service -n 20   # qué hizo la última vez
+```
+
+> Ajusta `/usr/bin/php` a lo que devuelva `which php`, y `User=` a quien sea
+> dueño de `storage/` (normalmente `www-data`).
+
+### Comprobar que quedó funcionando
+```bash
+php artisan schedule:list   # lista los dos comandos y su próxima ejecución
+php artisan push:doctor     # dice cuándo corrió el recordatorio por última vez
+```
+Espera un minuto tras activarlo: hasta que no se ejecute una primera vez,
+`push:doctor` seguirá diciendo que nunca ha corrido.
 
 ## 9. Instalar en el iPhone y activar notificaciones
 1. Abre `https://whitewater.tudominio.com` en **Safari**.
@@ -134,10 +194,16 @@ php artisan push:doctor --send   # además intenta un envío real y muestra el e
 `push:doctor` dice **cuándo se ejecutó por última vez** el recordatorio. Si responde
 «no se ha ejecutado nunca», el problema es el cron del paso 8 y no las claves.
 
-Los tres fallos habituales, en orden:
-1. **Falta el cron del scheduler** (paso 8): sin él `routines:remind` no se ejecuta nunca.
+Los fallos habituales, en orden:
+1. **No hay scheduler** (paso 8): sin él `routines:remind` no se ejecuta nunca.
+   Ojo: si `crontab` responde `command not found`, el paquete `cron` no está
+   instalado y el cron que creías puesto no existe.
 2. **APP_URL no es HTTPS**: el iPhone no registra el service worker.
 3. **La app no se abrió desde el ícono** de la pantalla de inicio: en Safari normal iOS no deja activar push.
+
+> Si `push:doctor` responde `There are no commands defined in the "push" namespace`,
+> el servidor está corriendo una versión vieja del código: falta hacer `git pull`
+> (o estás en otra rama) y `composer install`.
 
 ## Actualizar la app más adelante
 ```bash
