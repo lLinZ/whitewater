@@ -117,17 +117,25 @@ Hay dos formas; usa la que aplique a tu servidor.
 
 ### Opción A: cron
 
+Muchas imágenes de VPS vienen **sin cron** y `crontab` responde
+`command not found`. Instálalo primero:
 ```bash
-crontab -e
-```
-Añade:
-```
-* * * * * cd /var/www/whitewater && php artisan schedule:run >> /dev/null 2>&1
+sudo apt update && sudo apt install -y cron && sudo systemctl enable --now cron
 ```
 
-> Muchas imágenes de VPS vienen **sin cron** y `crontab` responde
-> `command not found`. Instálalo con `sudo apt install -y cron` y actívalo con
-> `sudo systemctl enable --now cron`, o usa la opción B.
+La tarea va en el crontab de **`www-data`**, no en el de root: `www-data` es
+quien es dueño de `storage/`, y un archivo que cree root ahí (un log rotado, por
+ejemplo) deja de ser escribible para la web.
+
+```bash
+( crontab -u www-data -l 2>/dev/null; \
+  echo '* * * * * cd /var/www/whitewater && /usr/bin/php artisan schedule:run >> /dev/null 2>&1' ) \
+  | crontab -u www-data -
+crontab -u www-data -l   # comprueba que quedó
+```
+
+> Ruta absoluta a `php` a propósito: el `PATH` de cron es mínimo y no siempre
+> coincide con el de tu sesión. Confírmala con `which php`.
 
 ### Opción B: temporizador de systemd
 
@@ -171,11 +179,15 @@ journalctl -u whitewater-scheduler.service -n 20   # qué hizo la última vez
 
 ### Comprobar que quedó funcionando
 ```bash
-php artisan schedule:list   # lista los dos comandos y su próxima ejecución
 php artisan push:doctor     # dice cuándo corrió el recordatorio por última vez
 ```
 Espera un minuto tras activarlo: hasta que no se ejecute una primera vez,
 `push:doctor` seguirá diciendo que nunca ha corrido.
+
+> **`php artisan schedule:list` no prueba nada.** Solo enseña lo que *estaría*
+> programado, y lo lista igual aunque no haya cron ni temporizador instalado.
+> La única señal de que algo dispara el scheduler es la línea de última
+> ejecución de `push:doctor`.
 
 ## 9. Instalar en el iPhone y activar notificaciones
 1. Abre `https://whitewater.tudominio.com` en **Safari**.
@@ -218,6 +230,16 @@ php artisan route:cache && php artisan view:cache
 ```
 
 ## Notas de esta versión
+
+Comprobación rápida del `.env` de producción antes de nada:
+```bash
+grep -n '^APP_URL\|^APP_ENV\|^APP_DEBUG\|^APP_TIMEZONE' /var/www/whitewater/.env
+```
+`APP_URL` tiene que ser el dominio real con `https://`. Si se quedó en
+`http://localhost`, los enlaces absolutos que genera Laravel (recuperación de
+contraseña, correos) apuntan a ninguna parte. `APP_TIMEZONE=America/Caracas` es
+lo que hace que las 20:00 del recordatorio sean las de Venezuela y no UTC.
+Tras tocar el `.env`: `php artisan config:clear && php artisan config:cache`.
 
 Lo que hay que revisar al desplegarla:
 
