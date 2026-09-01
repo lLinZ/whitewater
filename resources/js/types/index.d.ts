@@ -32,6 +32,8 @@ export interface ExpenseCategory {
     id: number;
     name: string;
     color?: string | null;
+    /** Cuantos gastos la usan; solo llega en la pantalla de Gastos. */
+    expenses_count?: number;
 }
 
 export interface Expense {

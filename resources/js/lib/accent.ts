@@ -54,9 +54,19 @@ export function normalizeAccent(key?: string | null): AccentKey {
 }
 
 /**
+ * Colores fijos para etiquetar cosas (categorías de gasto, series sueltas).
+ * Son hex y no clases de Tailwind porque acaban en un `style` o en un `fill`
+ * de SVG, y porque se guardan tal cual en la base de datos.
+ */
+export const CHART_PALETTE = [
+    '#7c3aed', '#0ea5e9', '#f59e0b', '#ec4899', '#16a34a',
+    '#64748b', '#f43f5e', '#8b5cf6', '#14b8a6', '#eab308',
+];
+
+/**
  * Colores para gráficas. El primero es el acento vigente del miembro, así las
  * barras y el donut van a juego con el resto de la app.
  */
 export function chartColors(): string[] {
-    return [accentHex(), '#0ea5e9', '#f59e0b', '#ec4899', '#16a34a', '#64748b', '#f43f5e', '#8b5cf6', '#14b8a6', '#eab308'];
+    return [accentHex(), ...CHART_PALETTE.slice(1)];
 }

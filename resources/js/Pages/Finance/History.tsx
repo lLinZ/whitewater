@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Button, Input, Select, SelectItem, Switch } from '@heroui/react';
+import { Button, Input, Select, SelectItem, Switch, useDisclosure } from '@heroui/react';
 import { Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, EmptyState, MemberBadge, SectionHeader } from '@/Components/ui/primitives';
+import ExpenseModal from '@/Components/ui/ExpenseModal';
 import ReceiptViewer from '@/Components/ui/ReceiptViewer';
 import { dayjs, formatDate, formatMoney, formatMoneyShort } from '@/lib/format';
 import { accent } from '@/lib/accent';
@@ -35,6 +36,8 @@ const RANGES = [
 
 export default function FinanceHistory({ filters, categories, members, expenses, totals }: Props) {
     const user = usePage<PageProps>().props.auth.user;
+    const editModal = useDisclosure();
+    const [editing, setEditing] = useState<Expense | null>(null);
     const [form, setForm] = useState<Filters>(filters);
     const [showFilters, setShowFilters] = useState(
         Boolean(filters.category || filters.member || filters.from || filters.to || filters.receipts),
@@ -217,7 +220,11 @@ export default function FinanceHistory({ filters, categories, members, expenses,
                                 de que la animación termine para poder leerse. */}
                             <Card className="animate-pop-in divide-y divide-divider !p-0">
                                 {rows.map((expense) => (
-                                    <ExpenseRow key={expense.id} expense={expense} />
+                                    <ExpenseRow
+                                        key={expense.id}
+                                        expense={expense}
+                                        onEdit={(e) => { setEditing(e); editModal.onOpen(); }}
+                                    />
                                 ))}
                             </Card>
                         </div>
@@ -246,6 +253,13 @@ export default function FinanceHistory({ filters, categories, members, expenses,
                     </Button>
                 </div>
             )}
+
+            <ExpenseModal
+                isOpen={editModal.isOpen}
+                onClose={editModal.onClose}
+                categories={categories}
+                expense={editing}
+            />
         </AppLayout>
     );
 }
@@ -263,7 +277,8 @@ function groupByMonth(expenses: Expense[]): [string, Expense[]][] {
     return Array.from(groups.entries());
 }
 
-function ExpenseRow({ expense }: { expense: Expense }) {
+/** Tocar la fila abre la edición; ahí es donde se le adjunta la factura. */
+function ExpenseRow({ expense, onEdit }: { expense: Expense; onEdit: (expense: Expense) => void }) {
     const del = () => {
         if (confirm(`¿Eliminar "${expense.description}"?`)) {
             router.delete(`/finanzas/gastos/${expense.id}`, { preserveScroll: true });
@@ -279,14 +294,17 @@ function ExpenseRow({ expense }: { expense: Expense }) {
                     {expense.category?.name?.[0] ?? '·'}
                 </div>
             )}
-            <div className="min-w-0 flex-1">
+            <button onClick={() => onEdit(expense)} className="min-w-0 flex-1 text-left active:opacity-60">
                 <p className="truncate text-sm font-medium">{expense.description}</p>
                 <p className="truncate text-xs text-default-400">
                     {expense.category?.name ?? 'Sin categoría'} · {formatDate(expense.date, 'D MMM YYYY')}
+                    {!expense.receipt_url && ' · sin comprobante'}
                 </p>
-            </div>
+            </button>
             <MemberBadge member={expense.creator} size={22} />
-            <span className="shrink-0 font-semibold">{formatMoney(expense.amount)}</span>
+            <button onClick={() => onEdit(expense)} className="shrink-0 font-semibold active:opacity-60">
+                {formatMoney(expense.amount)}
+            </button>
             <button onClick={del} aria-label="Eliminar gasto" className="shrink-0 text-default-300 active:text-rose-500">
                 <Trash2 size={16} />
             </button>

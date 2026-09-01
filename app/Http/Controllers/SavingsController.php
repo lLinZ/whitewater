@@ -88,6 +88,17 @@ class SavingsController extends Controller
             : 'Aporte registrado 💪');
     }
 
+    /** Edita un aporte ya registrado (típicamente, para adjuntarle el recibo). */
+    public function updateContribution(Request $request, SavingsGoal $goal, SavingsContribution $contribution, ImageService $images)
+    {
+        abort_unless($contribution->savings_goal_id === $goal->id, 404);
+
+        $contribution->update($this->validateEntry($request));
+        $this->syncReceipt($request, $images, $contribution);
+
+        return back()->with('success', 'Aporte actualizado');
+    }
+
     public function destroyContribution(SavingsGoal $goal, SavingsContribution $contribution, ImageService $images)
     {
         abort_unless($contribution->savings_goal_id === $goal->id, 404);

@@ -2,7 +2,7 @@
 
 namespace App\Http\Controllers;
 
-use App\Services\ImageService;
+use App\Http\Controllers\Concerns\HandlesReceipts;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
@@ -15,6 +15,8 @@ use Illuminate\Support\Carbon;
  */
 trait ManagesMoneyEntries
 {
+    use HandlesReceipts;
+
     /** Campos del formulario de monto (abono, aporte). */
     protected function validateEntry(Request $request): array
     {
@@ -23,21 +25,6 @@ trait ManagesMoneyEntries
             'date' => 'required|date',
             'note' => 'nullable|string|max:255',
         ]);
-    }
-
-    /**
-     * Guarda el comprobante si viene uno. La foto es opcional: registrar el
-     * movimiento nunca debe depender de tener el recibo a mano.
-     */
-    protected function storeReceipt(Request $request, ImageService $images): ?string
-    {
-        $request->validate([
-            'receipt' => ['nullable', 'image', 'mimes:jpeg,jpg,png,webp,heic', 'max:8192'],
-        ]);
-
-        return $request->hasFile('receipt')
-            ? $images->receipt($request->file('receipt'))
-            : null;
     }
 
     /**

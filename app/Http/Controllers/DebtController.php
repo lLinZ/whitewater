@@ -119,6 +119,22 @@ class DebtController extends Controller
             : 'Abono registrado');
     }
 
+    /**
+     * Edita un abono ya registrado.
+     *
+     * Sirve sobre todo para adjuntarle el comprobante a un pago viejo: el
+     * recibo aparece muchas veces después de haber anotado el abono.
+     */
+    public function updatePayment(Request $request, Debt $debt, DebtPayment $payment, ImageService $images)
+    {
+        abort_unless($payment->debt_id === $debt->id, 404);
+
+        $payment->update($this->validateEntry($request));
+        $this->syncReceipt($request, $images, $payment);
+
+        return back()->with('success', 'Abono actualizado');
+    }
+
     public function destroyPayment(Debt $debt, DebtPayment $payment, ImageService $images)
     {
         abort_unless($payment->debt_id === $debt->id, 404);

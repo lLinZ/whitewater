@@ -49,8 +49,11 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/finanzas', [FinanceController::class, 'index'])->name('finance.index');
     Route::get('/finanzas/historial', [FinanceController::class, 'history'])->name('finance.history');
     Route::post('/finanzas/gastos', [FinanceController::class, 'storeExpense'])->name('finance.expenses.store');
+    Route::patch('/finanzas/gastos/{expense}', [FinanceController::class, 'updateExpense'])->name('finance.expenses.update');
     Route::delete('/finanzas/gastos/{expense}', [FinanceController::class, 'destroyExpense'])->name('finance.expenses.destroy');
     Route::post('/finanzas/categorias', [FinanceController::class, 'storeCategory'])->name('finance.categories.store');
+    Route::patch('/finanzas/categorias/{category}', [FinanceController::class, 'updateCategory'])->name('finance.categories.update');
+    Route::delete('/finanzas/categorias/{category}', [FinanceController::class, 'destroyCategory'])->name('finance.categories.destroy');
 
     // --- Deudas & Ahorros ---
     Route::get('/dinero', [DebtController::class, 'index'])->name('money.index');
@@ -58,6 +61,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dinero/deudas/{debt}', [DebtController::class, 'show'])->name('debts.show');
     Route::patch('/dinero/deudas/{debt}', [DebtController::class, 'updateDebt'])->name('debts.update');
     Route::post('/dinero/deudas/{debt}/abono', [DebtController::class, 'storePayment'])->name('debts.pay');
+    Route::patch('/dinero/deudas/{debt}/abono/{payment}', [DebtController::class, 'updatePayment'])->name('debts.payments.update');
     Route::delete('/dinero/deudas/{debt}/abono/{payment}', [DebtController::class, 'destroyPayment'])->name('debts.payments.destroy');
     Route::delete('/dinero/deudas/{debt}', [DebtController::class, 'destroyDebt'])->name('debts.destroy');
 
@@ -65,6 +69,7 @@ Route::middleware(['auth'])->group(function () {
     Route::get('/dinero/metas/{goal}', [SavingsController::class, 'show'])->name('savings.show');
     Route::patch('/dinero/metas/{goal}', [SavingsController::class, 'updateGoal'])->name('savings.update');
     Route::post('/dinero/metas/{goal}/aporte', [SavingsController::class, 'storeContribution'])->name('savings.contribute');
+    Route::patch('/dinero/metas/{goal}/aporte/{contribution}', [SavingsController::class, 'updateContribution'])->name('savings.contributions.update');
     Route::delete('/dinero/metas/{goal}/aporte/{contribution}', [SavingsController::class, 'destroyContribution'])->name('savings.contributions.destroy');
     Route::delete('/dinero/metas/{goal}', [SavingsController::class, 'destroyGoal'])->name('savings.destroy');
 

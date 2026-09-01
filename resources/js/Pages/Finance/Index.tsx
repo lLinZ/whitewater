@@ -1,19 +1,16 @@
-import { FormEvent, useState } from 'react';
+import { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import {
     BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, Tooltip,
 } from 'recharts';
-import {
-    Button, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-    Input, Select, SelectItem,
-} from '@heroui/react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Button, useDisclosure } from '@heroui/react';
+import { Plus, Tags, Trash2 } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import { Card, SectionHeader, StatTile, EmptyState, MemberBadge } from '@/Components/ui/primitives';
-import DecimalInput from '@/Components/ui/DecimalInput';
-import ReceiptPicker from '@/Components/ui/ReceiptPicker';
+import CategoryManager from '@/Components/ui/CategoryManager';
+import ExpenseModal from '@/Components/ui/ExpenseModal';
 import ReceiptViewer from '@/Components/ui/ReceiptViewer';
-import { formatMoney, formatMoneyShort, formatDate, today } from '@/lib/format';
+import { formatMoney, formatMoneyShort, formatDate } from '@/lib/format';
 import { chartColors } from '@/lib/accent';
 import { Expense, ExpenseCategory } from '@/types';
 
@@ -27,18 +24,38 @@ interface Props {
 }
 
 export default function FinanceIndex({ categories, expenses, expenseCount, stats, byCategory, weeklyTrend }: Props) {
-    const newExpense = useDisclosure();
+    const modal = useDisclosure();
+    const categoryManager = useDisclosure();
+    // null = el modal está creando; con un gasto dentro, está editando ese.
+    const [editing, setEditing] = useState<Expense | null>(null);
     const colors = chartColors();
 
-    const del = (id: number) => {
-        if (confirm('¿Eliminar este gasto?')) router.delete(`/finanzas/gastos/${id}`, { preserveScroll: true });
+    const openNew = () => { setEditing(null); modal.onOpen(); };
+    const openEdit = (expense: Expense) => { setEditing(expense); modal.onOpen(); };
+
+    const del = (expense: Expense) => {
+        if (confirm(`¿Eliminar "${expense.description}"?`)) {
+            router.delete(`/finanzas/gastos/${expense.id}`, { preserveScroll: true });
+        }
     };
 
     return (
         <AppLayout
             title="Gastos"
             subtitle="Finanzas del hogar"
-            right={<Button isIconOnly color="primary" radius="full" size="sm" onPress={newExpense.onOpen}><Plus size={18} /></Button>}
+            right={
+                <div className="flex items-center gap-1">
+                    <Button
+                        isIconOnly variant="light" radius="full" size="sm"
+                        aria-label="Categorías" onPress={categoryManager.onOpen}
+                    >
+                        <Tags size={17} className="text-default-400" />
+                    </Button>
+                    <Button isIconOnly color="primary" radius="full" size="sm" aria-label="Nuevo gasto" onPress={openNew}>
+                        <Plus size={18} />
+                    </Button>
+                </div>
+            }
         >
             <Head title="Gastos" />
 
@@ -108,26 +125,7 @@ export default function FinanceIndex({ categories, expenses, expenseCount, stats
                 <>
                     <Card className="divide-y divide-divider !p-0">
                         {expenses.map((e) => (
-                            <div key={e.id} className="group flex items-center gap-3 px-4 py-3">
-                                {e.receipt_url ? (
-                                    <ReceiptViewer url={e.receipt_url} alt={e.description} size={36} />
-                                ) : (
-                                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-content2 text-sm">
-                                        {e.category?.name?.[0] ?? '·'}
-                                    </div>
-                                )}
-                                <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium">{e.description}</p>
-                                    <p className="text-xs text-default-400">
-                                        {e.category?.name ?? 'Sin categoría'} · {formatDate(e.date)}
-                                    </p>
-                                </div>
-                                <MemberBadge member={e.creator} size={22} />
-                                <span className="font-semibold">{formatMoney(e.amount)}</span>
-                                <button onClick={() => del(e.id)} aria-label="Eliminar gasto" className="text-default-300 active:text-rose-500">
-                                    <Trash2 size={16} />
-                                </button>
-                            </div>
+                            <ExpenseRow key={e.id} expense={e} onEdit={openEdit} onDelete={del} />
                         ))}
                     </Card>
 
@@ -141,61 +139,53 @@ export default function FinanceIndex({ categories, expenses, expenseCount, stats
                 </>
             )}
 
-            <NewExpenseModal disclosure={newExpense} categories={categories} />
+            <ExpenseModal
+                isOpen={modal.isOpen}
+                onClose={modal.onClose}
+                categories={categories}
+                expense={editing}
+            />
+
+            <CategoryManager
+                isOpen={categoryManager.isOpen}
+                onClose={categoryManager.onClose}
+                categories={categories}
+            />
         </AppLayout>
     );
 }
 
-function NewExpenseModal({ disclosure, categories }: { disclosure: ReturnType<typeof useDisclosure>; categories: ExpenseCategory[] }) {
-    const empty = { amount: '', description: '', expense_category_id: '', date: today() };
-    const [form, setForm] = useState(empty);
-    const [receipt, setReceipt] = useState<File | null>(null);
-    const [errors, setErrors] = useState<Record<string, string>>({});
-    const [processing, setProcessing] = useState(false);
-
-    const submit = (e: FormEvent) => {
-        e.preventDefault();
-        setProcessing(true);
-        // forceFormData: la foto necesita multipart, no JSON.
-        router.post('/finanzas/gastos', { ...form, receipt }, {
-            forceFormData: true,
-            preserveScroll: true,
-            onError: setErrors,
-            onSuccess: () => { setForm(empty); setReceipt(null); setErrors({}); disclosure.onClose(); },
-            onFinish: () => setProcessing(false),
-        });
-    };
-
+/** Tocar la fila abre la edición; ahí es donde se le adjunta la factura. */
+function ExpenseRow({
+    expense, onEdit, onDelete,
+}: {
+    expense: Expense;
+    onEdit: (expense: Expense) => void;
+    onDelete: (expense: Expense) => void;
+}) {
     return (
-        <Modal isOpen={disclosure.isOpen} onClose={disclosure.onClose} placement="center" backdrop="blur" size="sm">
-            <ModalContent>
-                <form onSubmit={submit}>
-                    <ModalHeader>Nuevo gasto</ModalHeader>
-                    <ModalBody className="gap-3">
-                        <DecimalInput autoFocus label="Monto" startContent="$" size="lg"
-                            value={form.amount} onValueChange={(v) => setForm({ ...form, amount: v })}
-                            isInvalid={!!errors.amount} errorMessage={errors.amount} isRequired />
-                        <Input label="Descripción" placeholder="Mercado del mes"
-                            value={form.description} onValueChange={(v) => setForm({ ...form, description: v })}
-                            isInvalid={!!errors.description} errorMessage={errors.description} isRequired />
-                        <Select label="Categoría" selectedKeys={form.expense_category_id ? [form.expense_category_id] : []}
-                            onSelectionChange={(keys) => setForm({ ...form, expense_category_id: String(Array.from(keys)[0] ?? '') })}>
-                            {categories.map((c) => <SelectItem key={String(c.id)}>{c.name}</SelectItem>)}
-                        </Select>
-                        <Input type="date" label="Fecha" value={form.date} onValueChange={(v) => setForm({ ...form, date: v })} />
-                        <ReceiptPicker
-                            value={receipt}
-                            onChange={setReceipt}
-                            error={errors.receipt}
-                            hint="Foto del recibo o la factura (opcional)"
-                        />
-                    </ModalBody>
-                    <ModalFooter>
-                        <Button variant="light" onPress={disclosure.onClose}>Cancelar</Button>
-                        <Button color="primary" type="submit" isLoading={processing} isDisabled={!form.amount || !form.description}>Guardar</Button>
-                    </ModalFooter>
-                </form>
-            </ModalContent>
-        </Modal>
+        <div className="flex items-center gap-3 px-4 py-3">
+            {expense.receipt_url ? (
+                <ReceiptViewer url={expense.receipt_url} alt={expense.description} size={36} />
+            ) : (
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-content2 text-sm">
+                    {expense.category?.name?.[0] ?? '·'}
+                </div>
+            )}
+            <button onClick={() => onEdit(expense)} className="min-w-0 flex-1 text-left active:opacity-60">
+                <p className="truncate text-sm font-medium">{expense.description}</p>
+                <p className="text-xs text-default-400">
+                    {expense.category?.name ?? 'Sin categoría'} · {formatDate(expense.date)}
+                    {!expense.receipt_url && ' · sin comprobante'}
+                </p>
+            </button>
+            <MemberBadge member={expense.creator} size={22} />
+            <button onClick={() => onEdit(expense)} className="shrink-0 font-semibold active:opacity-60">
+                {formatMoney(expense.amount)}
+            </button>
+            <button onClick={() => onDelete(expense)} aria-label="Eliminar gasto" className="shrink-0 text-default-300 active:text-rose-500">
+                <Trash2 size={16} />
+            </button>
+        </div>
     );
 }

@@ -55,6 +55,9 @@ export default function MoneyShow({ account, entries, totals }: Props) {
     const a = accent(account.color);
     const addModal = useDisclosure();
     const editModal = useDisclosure();
+    const entryModal = useDisclosure();
+    // Movimiento que se está editando; null mientras no haya ninguno abierto.
+    const [editingEntry, setEditingEntry] = useState<MoneyEntry | null>(null);
 
     const base = account.kind === 'debt'
         ? `/dinero/deudas/${account.id}`
@@ -65,6 +68,11 @@ export default function MoneyShow({ account, entries, totals }: Props) {
         if (confirm(`¿Eliminar este ${copy.entry}?`)) {
             router.delete(`${entryUrl}/${id}`, { preserveScroll: true });
         }
+    };
+
+    const openEntry = (entry: MoneyEntry) => {
+        setEditingEntry(entry);
+        entryModal.onOpen();
     };
 
     const removeAccount = () => {
@@ -160,7 +168,7 @@ export default function MoneyShow({ account, entries, totals }: Props) {
                             ) : (
                                 <MemberBadge member={entry.member} size={40} />
                             )}
-                            <div className="min-w-0 flex-1">
+                            <button onClick={() => openEntry(entry)} className="min-w-0 flex-1 text-left active:opacity-60">
                                 <p className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
                                     +{formatMoney(entry.amount)}
                                 </p>
@@ -168,8 +176,9 @@ export default function MoneyShow({ account, entries, totals }: Props) {
                                     {formatDate(entry.date, 'D MMM YYYY')}
                                     {entry.member && ` · ${entry.member.name}`}
                                     {entry.note && ` · ${entry.note}`}
+                                    {!entry.receipt_url && ' · sin comprobante'}
                                 </p>
-                            </div>
+                            </button>
                             {entry.receipt_url && <MemberBadge member={entry.member} size={22} />}
                             <button
                                 aria-label={`Eliminar ${copy.entry}`}
@@ -203,6 +212,17 @@ export default function MoneyShow({ account, entries, totals }: Props) {
                 ctaLabel={account.kind === 'debt' ? 'Abonar' : 'Aportar'}
                 amountLabel={copy.amountLabel}
             />
+
+            {editingEntry && (
+                <AmountModal
+                    isOpen={entryModal.isOpen}
+                    onClose={entryModal.onClose}
+                    title={`Editar ${copy.entry}`}
+                    action={`${entryUrl}/${editingEntry.id}`}
+                    amountLabel={copy.amountLabel}
+                    entry={editingEntry}
+                />
+            )}
 
             <EditModal disclosure={editModal} account={account} url={base} />
         </AppLayout>

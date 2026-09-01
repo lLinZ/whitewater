@@ -1,4 +1,4 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import {
     Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Button, Input,
 } from '@heroui/react';
@@ -6,43 +6,65 @@ import { router } from '@inertiajs/react';
 import DecimalInput from '@/Components/ui/DecimalInput';
 import ReceiptPicker from '@/Components/ui/ReceiptPicker';
 import { today } from '@/lib/format';
+import { MoneyEntry } from '@/types';
 
 interface Props {
     isOpen: boolean;
     onClose: () => void;
     title: string;
-    action: string;          // URL para POST
+    /** URL destino: la de alta al crear, la del movimiento al editar. */
+    action: string;
     ctaLabel?: string;
     amountLabel?: string;
     withNote?: boolean;
+    /** Movimiento que ya existe. Si viene, el modal edita en vez de crear. */
+    entry?: MoneyEntry | null;
 }
 
 export default function AmountModal({
-    isOpen, onClose, title, action, ctaLabel = 'Registrar', amountLabel = 'Monto', withNote = true,
+    isOpen, onClose, title, action, ctaLabel = 'Registrar', amountLabel = 'Monto',
+    withNote = true, entry = null,
 }: Props) {
+    const editing = !!entry;
+
     const [amount, setAmount] = useState('');
     const [note, setNote] = useState('');
     const [date, setDate] = useState(today());
     const [receipt, setReceipt] = useState<File | null>(null);
+    const [removeReceipt, setRemoveReceipt] = useState(false);
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
 
-    const reset = () => {
-        setAmount('');
-        setNote('');
+    // Al abrirlo se rellena con el movimiento a editar, o se deja en blanco.
+    // Sin esto, editar un abono después de otro arrastraría el monto anterior.
+    useEffect(() => {
+        if (!isOpen) return;
+        setAmount(entry ? String(entry.amount) : '');
+        setNote(entry?.note ?? '');
+        setDate(entry?.date ?? today());
         setReceipt(null);
+        setRemoveReceipt(false);
         setErrors({});
-    };
+    }, [isOpen, entry]);
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
         setProcessing(true);
-        // forceFormData: sin esto la foto viajaría como un objeto vacío en JSON.
-        router.post(action, { amount, note, date, receipt }, {
+
+        // forceFormData porque va una foto; y con multipart, PHP no rellena
+        // $_FILES en un PATCH real, así que el método se suplanta en el cuerpo.
+        router.post(action, {
+            ...(editing ? { _method: 'patch' } : {}),
+            amount,
+            note,
+            date,
+            receipt,
+            remove_receipt: removeReceipt ? '1' : '',
+        }, {
             forceFormData: true,
             preserveScroll: true,
             onError: setErrors,
-            onSuccess: () => { reset(); onClose(); },
+            onSuccess: onClose,
             onFinish: () => setProcessing(false),
         });
     };
@@ -71,6 +93,9 @@ export default function AmountModal({
                         <ReceiptPicker
                             value={receipt}
                             onChange={setReceipt}
+                            currentUrl={entry?.receipt_url}
+                            removed={removeReceipt}
+                            onRemovedChange={setRemoveReceipt}
                             error={errors.receipt}
                             hint="Foto del recibo del banco (opcional)"
                         />
@@ -78,7 +103,7 @@ export default function AmountModal({
                     <ModalFooter>
                         <Button variant="light" onPress={onClose}>Cancelar</Button>
                         <Button color="primary" type="submit" isLoading={processing} isDisabled={!amount}>
-                            {ctaLabel}
+                            {editing ? 'Guardar' : ctaLabel}
                         </Button>
                     </ModalFooter>
                 </form>
