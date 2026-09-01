@@ -2,12 +2,12 @@
 
 namespace App\Console\Commands;
 
+use App\Console\SchedulerStatus;
 use App\Models\Routine;
 use App\Models\User;
 use App\Services\PushService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 
 class RemindRoutines extends Command
 {
@@ -15,20 +15,13 @@ class RemindRoutines extends Command
 
     protected $description = 'Envía un push con las rutinas del hogar pendientes de hoy';
 
-    /**
-     * Rastro de la última ejecución.
-     *
-     * Sirve para responder a "las notificaciones no llegan": si esto está
-     * vacío, el comando no se ha ejecutado nunca y el problema es el cron del
-     * servidor, no las claves ni las suscripciones.
-     */
-    public const LAST_RUN_KEY = 'routines.remind.last_run';
-
     public function handle(PushService $push): int
     {
         $today = Carbon::today();
 
-        Cache::forever(self::LAST_RUN_KEY, now()->toIso8601String());
+        // Deja constancia aunque hoy no haya nada que notificar: lo que
+        // interesa saber después es si el comando llegó a ejecutarse.
+        SchedulerStatus::reminderRan();
 
         // Solo las que tocan hoy: una rutina de miércoles y viernes no debe
         // aparecer en el recordatorio de un lunes.

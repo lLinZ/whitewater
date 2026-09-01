@@ -1,12 +1,12 @@
 <?php
 
-use App\Console\Commands\RemindRoutines;
+use App\Console\SchedulerStatus;
 use App\Models\User;
 use App\Models\Routine;
 use App\Models\PushSubscription;
 use App\Services\PushService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Carbon;
 
 use function Pest\Laravel\actingAs;
 
@@ -177,18 +177,52 @@ test('push:doctor avisa si nadie tiene notificaciones activadas', function () {
         ->assertFailed();
 });
 
-test('push:doctor delata que falta el cron cuando el recordatorio nunca corrió', function () {
-    Cache::forget(RemindRoutines::LAST_RUN_KEY);
+test('push:doctor delata que nada llama al scheduler', function () {
+    SchedulerStatus::forget();
 
     $this->artisan('push:doctor')
-        ->expectsOutputToContain('no se ha ejecutado nunca')
+        ->expectsOutputToContain('Nada está llamando a `schedule:run`')
         ->assertFailed();
 });
 
-test('push:doctor confirma el cron una vez que el recordatorio corre', function () {
-    $this->artisan('routines:remind')->assertSuccessful();
+test('push:doctor confirma el scheduler en cuanto llega un latido', function () {
+    SchedulerStatus::beat();
 
-    expect(Cache::get(RemindRoutines::LAST_RUN_KEY))->not->toBeNull();
+    $this->artisan('push:doctor')->expectsOutputToContain('El scheduler está corriendo');
+});
 
-    $this->artisan('push:doctor')->expectsOutputToContain('Última ejecución');
+test('un latido viejo se reporta como scheduler parado', function () {
+    // Un latido de hace media hora no es "funciona": el cron se cayó.
+    Carbon::setTestNow(Carbon::now()->subMinutes(30));
+    SchedulerStatus::beat();
+    Carbon::setTestNow();
+
+    $this->artisan('push:doctor')
+        ->expectsOutputToContain('El scheduler se paró')
+        ->assertFailed();
+});
+
+test('que el recordatorio no haya salido todavía no cuenta como fallo', function () {
+    // El recordatorio sale una vez al día: a las 10 de la mañana no ha
+    // corrido, y eso no es un problema que haya que arreglar.
+    SchedulerStatus::forget();
+    SchedulerStatus::beat();
+
+    $this->artisan('push:doctor')
+        ->expectsOutputToContain('Todavía no se ha enviado ningún recordatorio');
+
+    expect(SchedulerStatus::lastReminder())->toBeNull();
+});
+
+test('el recordatorio deja constancia aunque no haya nada que notificar', function () {
+    SchedulerStatus::forget();
+
+    $this->artisan('routines:remind')
+        ->expectsOutputToContain('No hay rutinas pendientes')
+        ->assertSuccessful();
+
+    expect(SchedulerStatus::lastReminder())->not->toBeNull();
+
+    SchedulerStatus::beat();
+    $this->artisan('push:doctor')->expectsOutputToContain('Último recordatorio enviado');
 });

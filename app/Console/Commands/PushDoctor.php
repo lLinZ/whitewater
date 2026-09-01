@@ -2,12 +2,11 @@
 
 namespace App\Console\Commands;
 
+use App\Console\SchedulerStatus;
 use App\Models\PushSubscription;
 use App\Models\User;
 use App\Services\PushService;
 use Illuminate\Console\Command;
-use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Cache;
 
 class PushDoctor extends Command
 {
@@ -70,22 +69,40 @@ class PushDoctor extends Command
         }
 
         $this->line('');
-        $this->line('== Recordatorio programado ==');
-        $this->line('Hora configurada: '.config('services.webpush.reminder_time', '20:00'));
+        $this->line('== Tareas programadas ==');
+        $reminderTime = config('services.webpush.reminder_time', '20:00');
+        $this->line('Hora configurada: '.$reminderTime);
 
-        // El dato que zanja de verdad un "no me llegan las notificaciones":
-        // si el recordatorio no se ha ejecutado nunca, lo que falta es el cron,
-        // no las claves ni las suscripciones.
-        $lastRun = Cache::get(RemindRoutines::LAST_RUN_KEY);
+        // El latido es lo que zanja un "no me llegan las notificaciones": se
+        // escribe cada minuto, así que dice si algo llama a `schedule:run` sin
+        // esperar a la hora del recordatorio.
+        $beat = SchedulerStatus::lastBeat();
 
-        if ($lastRun) {
-            $this->info('✓ Última ejecución: '.Carbon::parse($lastRun)->diffForHumans()." ({$lastRun})");
+        if (SchedulerStatus::isAlive()) {
+            $this->info('✓ El scheduler está corriendo (último latido '.$beat->diffForHumans().').');
+        } elseif ($beat) {
+            $ok = false;
+            $this->error('✗ El scheduler se paró: último latido '.$beat->diffForHumans().'.');
+            $this->line('  Revisa que el cron siga activo: systemctl status cron');
         } else {
             $ok = false;
-            $this->error('✗ El recordatorio no se ha ejecutado nunca: falta el cron del scheduler.');
-            $this->line('  Añádelo con `crontab -e`:');
-            $this->line('  * * * * * cd '.base_path().' && php artisan schedule:run >> /dev/null 2>&1');
-            $this->line('  Compruébalo con: php artisan schedule:list');
+            $this->error('✗ Nada está llamando a `schedule:run`: falta el cron del scheduler.');
+            $this->line('  Instálalo y añádelo al crontab de www-data:');
+            $this->line('  sudo apt install -y cron && sudo systemctl enable --now cron');
+            $this->line("  ( crontab -u www-data -l 2>/dev/null; echo '* * * * * cd ".base_path()." && ".PHP_BINARY." artisan schedule:run >> /dev/null 2>&1' ) | crontab -u www-data -");
+            $this->line('  Espera un minuto y vuelve a correr este comando.');
+        }
+
+        // Que el recordatorio no se haya enviado todavía NO es un fallo: solo
+        // corre una vez al día. Marcarlo en rojo mandaría a buscar un problema
+        // que no existe.
+        $reminder = SchedulerStatus::lastReminder();
+
+        if ($reminder) {
+            $this->line('Último recordatorio enviado: '.$reminder->diffForHumans()." ({$reminder->toDateTimeString()})");
+        } else {
+            $this->line("Todavía no se ha enviado ningún recordatorio: sale a las {$reminderTime}.");
+            $this->line('  Para forzarlo ahora: php artisan routines:remind');
         }
 
         if ($this->option('send')) {

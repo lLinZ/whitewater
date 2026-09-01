@@ -178,16 +178,28 @@ journalctl -u whitewater-scheduler.service -n 20   # qué hizo la última vez
 > dueño de `storage/` (normalmente `www-data`).
 
 ### Comprobar que quedó funcionando
+Espera un minuto tras activarlo y corre:
 ```bash
-php artisan push:doctor     # dice cuándo corrió el recordatorio por última vez
+php artisan push:doctor
 ```
-Espera un minuto tras activarlo: hasta que no se ejecute una primera vez,
-`push:doctor` seguirá diciendo que nunca ha corrido.
+Tiene que decir **«✓ El scheduler está corriendo (último latido hace N segundos)»**.
+El latido lo escribe una tarea programada cada minuto, así que confirma el cron
+al momento, sin esperar a la hora del recordatorio.
+
+Dos líneas de la salida que **no** significan lo mismo:
+
+| Línea | Qué significa |
+|---|---|
+| `✓ El scheduler está corriendo` | Algo llama a `schedule:run` cada minuto. Esto es lo que hay que conseguir. |
+| `Todavía no se ha enviado ningún recordatorio` | Normal hasta las 20:00. **No es un fallo**: el recordatorio sale una vez al día. |
+
+Para no esperar a la noche, dispáralo a mano (manda push de verdad a los teléfonos):
+```bash
+php artisan routines:remind
+```
 
 > **`php artisan schedule:list` no prueba nada.** Solo enseña lo que *estaría*
 > programado, y lo lista igual aunque no haya cron ni temporizador instalado.
-> La única señal de que algo dispara el scheduler es la línea de última
-> ejecución de `push:doctor`.
 
 ## 9. Instalar en el iPhone y activar notificaciones
 1. Abre `https://whitewater.tudominio.com` en **Safari**.
