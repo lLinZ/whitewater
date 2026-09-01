@@ -256,7 +256,9 @@ Tras tocar el `.env`: `php artisan config:clear && php artisan config:cache`.
 Lo que hay que revisar al desplegarla:
 
 - **`php artisan migrate --force` es obligatorio.** Añade `receipt_path` a gastos,
-  abonos y aportes, y `theme` a los usuarios.
+  abonos, aportes y compras, y `theme` a los usuarios.
+- **`composer install` también es obligatorio**: hay una dependencia nueva
+  (`anthropic-ai/sdk`, para el escaneo de facturas).
 - **`php artisan storage:link` tiene que existir.** Sin ese enlace las fotos de
   perfil y los comprobantes salen rotos (error 404 en `/storage/...`).
 - **La extensión `gd` de PHP** es la que reduce y endereza las fotos. Sin ella la
@@ -272,6 +274,36 @@ Lo que hay que revisar al desplegarla:
   ```
 - **`config:clear` antes de `config:cache`**: las URLs de las imágenes cambiaron a
   rutas relativas; con la config vieja cacheada seguirían apuntando a `APP_URL`.
+
+## Escaneo de facturas (opcional)
+
+Permite crear una compra completa con sus productos a partir de la foto de la
+factura. Es **opcional**: sin clave configurada el botón no aparece y el resto
+de la app funciona igual.
+
+1. Saca una clave en <https://console.anthropic.com> → API Keys.
+2. Ponla en el `.env`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ANTHROPIC_MODEL=claude-opus-5
+   ```
+3. `php artisan config:clear && php artisan config:cache`
+
+**Cuesta dinero por uso:** unos 3–4 céntimos de dólar por factura. Se paga por
+escaneo, no por mes. Si prefieres gastar menos a cambio de algo menos de
+precisión en fotos malas, pon `ANTHROPIC_MODEL=claude-sonnet-5`.
+
+**Tiempo de ejecución:** leer una factura tarda entre 5 y 20 segundos. Si PHP
+tiene `max_execution_time=30`, una foto complicada puede cortarse:
+```
+sudo sed -i 's/^max_execution_time = .*/max_execution_time = 60/' /etc/php/8.2/fpm/php.ini
+sudo systemctl reload php8.2-fpm
+```
+Nginx aguanta 60 s por defecto (`fastcgi_read_timeout`), así que con eso basta.
+
+**Qué hace y qué no:** lee la factura y deja un borrador para revisar. Nunca
+guarda nada solo — los precios se corrigen a mano y se elige con qué tasa
+(BCV o paralelo) valorar los bolívares antes de crear la compra.
 
 ### Copia de seguridad de los comprobantes
 Los recibos son evidencia de pagos y viven fuera de la base de datos. Para

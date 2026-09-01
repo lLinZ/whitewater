@@ -48,6 +48,27 @@ class ImageService
     }
 
     /**
+     * Duplica un archivo ya guardado y devuelve la ruta de la copia.
+     *
+     * Se copia en vez de compartir la ruta porque cada registro es dueño de su
+     * archivo: si una compra y el gasto que genera apuntaran al mismo, borrar
+     * cualquiera de los dos dejaría al otro sin comprobante.
+     */
+    public function copy(?string $path): ?string
+    {
+        $disk = Storage::disk('public');
+
+        if (! $path || ! $disk->exists($path)) {
+            return null;
+        }
+
+        $copy = dirname($path).'/'.Str::uuid().'.'.pathinfo($path, PATHINFO_EXTENSION);
+        $disk->copy($path, $copy);
+
+        return $copy;
+    }
+
+    /**
      * Procesa y guarda, devolviendo la ruta relativa dentro del disco.
      *
      * @param  callable(\GdImage): \GdImage  $transform

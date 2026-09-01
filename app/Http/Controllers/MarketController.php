@@ -7,7 +7,9 @@ use App\Models\ShoppingItem;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Services\ExchangeRateService;
+use App\Services\ImageService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class MarketController extends Controller
@@ -160,7 +162,7 @@ class MarketController extends Controller
         return back(303);
     }
 
-    public function finish(Request $request, ShoppingTrip $trip)
+    public function finish(Request $request, ShoppingTrip $trip, ImageService $images)
     {
         $data = $request->validate([
             'as_expense' => 'nullable|boolean',
@@ -180,6 +182,10 @@ class MarketController extends Controller
                 'description' => $trip->name,
                 'date' => now()->toDateString(),
                 'created_by' => $request->user()->id,
+                // Si la compra nació de una factura escaneada, el gasto se
+                // queda con su propia copia: cada registro es dueño de su
+                // archivo y borrar uno no debe dejar al otro sin comprobante.
+                'receipt_path' => $images->copy($trip->receipt_path),
             ]);
 
             $trip->update(['expense_id' => $expense->id]);
@@ -188,8 +194,9 @@ class MarketController extends Controller
         return redirect()->route('market.index')->with('celebrate', 'Mercado terminado 🛒');
     }
 
-    public function destroy(ShoppingTrip $trip)
+    public function destroy(ShoppingTrip $trip, ImageService $images)
     {
+        $images->delete($trip->receipt_path);
         $trip->delete();
 
         return redirect()->route('market.index')->with('success', 'Mercado eliminado');
@@ -212,6 +219,7 @@ class MarketController extends Controller
                 'bcv_eur' => $trip->rate_bcv_eur !== null ? (float) $trip->rate_bcv_eur : null,
             ],
             'has_expense' => (bool) $trip->expense_id,
+            'receipt_url' => $trip->receipt_path ? Storage::disk('public')->url($trip->receipt_path) : null,
             'items' => $trip->relationLoaded('items') ? $trip->items->map(fn ($i) => [
                 'id' => $i->id,
                 'name' => $i->name,

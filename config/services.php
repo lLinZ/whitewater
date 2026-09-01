@@ -42,4 +42,11 @@ return [
         'reminder_time' => env('ROUTINE_REMINDER_TIME', '20:00'),
     ],
 
+    // Lectura de facturas por foto. Sin clave, la app esconde el escaneo y
+    // todo lo demás sigue funcionando igual.
+    'anthropic' => [
+        'key' => env('ANTHROPIC_API_KEY'),
+        'model' => env('ANTHROPIC_MODEL', 'claude-opus-5'),
+    ],
+
 ];

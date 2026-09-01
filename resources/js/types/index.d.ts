@@ -218,6 +218,8 @@ export interface ShoppingTrip {
     pending_price_count: number;
     rates: TripRates;
     has_expense: boolean;
+    /** Foto de la factura, si la compra nacio de un escaneo. */
+    receipt_url?: string | null;
     items: ShoppingItem[];
 }
 
@@ -236,5 +238,10 @@ export type PageProps<
     notifications: {
         vapidPublicKey: string | null;
         subscribed: boolean;
+    };
+    /** Funciones que dependen de configuracion del servidor. */
+    features: {
+        /** Hay clave de Anthropic: se puede leer una factura por foto. */
+        invoiceScan: boolean;
     };
 };

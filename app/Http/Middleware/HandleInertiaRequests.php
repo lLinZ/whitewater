@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\ExchangeRate;
+use App\Services\InvoiceScanner;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -39,6 +40,11 @@ class HandleInertiaRequests extends Middleware
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
                 'celebrate' => fn () => $request->session()->get('celebrate'),
+            ],
+            // Sin clave de Anthropic no se puede leer una factura, y el
+            // botón de escanear no debe ni aparecer.
+            'features' => [
+                'invoiceScan' => fn () => app(InvoiceScanner::class)->isConfigured(),
             ],
             'notifications' => [
                 'vapidPublicKey' => config('services.webpush.public_key'),

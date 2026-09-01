@@ -9,6 +9,7 @@ use App\Http\Controllers\DebtController;
 use App\Http\Controllers\SavingsController;
 use App\Http\Controllers\RoutineController;
 use App\Http\Controllers\RatesController;
+use App\Http\Controllers\InvoiceScanController;
 use App\Http\Controllers\MarketController;
 use App\Http\Controllers\PushController;
 use Illuminate\Support\Facades\Route;
@@ -79,6 +80,12 @@ Route::middleware(['auth'])->group(function () {
     // --- Mercado (compras) ---
     Route::get('/mercado', [MarketController::class, 'index'])->name('market.index');
     Route::post('/mercado', [MarketController::class, 'store'])->name('market.store');
+
+    // Compra a partir de la foto de una factura (escanear -> revisar -> crear).
+    Route::post('/mercado/escanear', [InvoiceScanController::class, 'scan'])->name('market.invoice.scan');
+    Route::get('/mercado/factura', [InvoiceScanController::class, 'review'])->name('market.invoice.review');
+    Route::post('/mercado/factura', [InvoiceScanController::class, 'confirm'])->name('market.invoice.confirm');
+    Route::delete('/mercado/factura', [InvoiceScanController::class, 'discard'])->name('market.invoice.discard');
     Route::get('/mercado/{trip}', [MarketController::class, 'show'])->name('market.show');
     Route::post('/mercado/{trip}/item', [MarketController::class, 'addItem'])->name('market.items.add');
     Route::patch('/mercado/{trip}/item/{item}', [MarketController::class, 'updateItem'])->name('market.items.update');
