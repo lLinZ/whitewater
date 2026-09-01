@@ -15,7 +15,11 @@ uses(RefreshDatabase::class);
 
 beforeEach(function () {
     Storage::fake('public');
-    config(['services.anthropic.key' => 'sk-ant-de-mentira']);
+    config([
+        'services.anthropic.key' => 'sk-ant-de-mentira',
+        'services.gemini.key' => null,
+        'services.invoice_scanner.driver' => 'auto',
+    ]);
     $this->user = User::factory()->create();
 });
 
@@ -50,7 +54,7 @@ function fakeScanner(array $result = null): void
 }
 
 test('sin clave configurada el escaneo no existe', function () {
-    config(['services.anthropic.key' => null]);
+    config(['services.anthropic.key' => null, 'services.gemini.key' => null]);
 
     actingAs($this->user)
         ->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('factura.jpg')])
@@ -58,7 +62,7 @@ test('sin clave configurada el escaneo no existe', function () {
 });
 
 test('sin clave el front no anuncia la función', function () {
-    config(['services.anthropic.key' => null]);
+    config(['services.anthropic.key' => null, 'services.gemini.key' => null]);
 
     actingAs($this->user)->get('/mercado')
         ->assertInertia(fn (Assert $p) => $p->where('features.invoiceScan', false));

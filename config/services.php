@@ -42,11 +42,23 @@ return [
         'reminder_time' => env('ROUTINE_REMINDER_TIME', '20:00'),
     ],
 
-    // Lectura de facturas por foto. Sin clave, la app esconde el escaneo y
-    // todo lo demás sigue funcionando igual.
+    // Lectura de facturas por foto. Sin ninguna clave, la app esconde el
+    // escaneo y todo lo demás sigue funcionando igual.
+    //
+    // driver: 'auto' usa el proveedor que tenga clave (Anthropic primero, que
+    // lee mejor las fotos malas). 'anthropic' o 'gemini' lo fuerzan.
+    'invoice_scanner' => [
+        'driver' => env('INVOICE_SCANNER', 'auto'),
+    ],
+
     'anthropic' => [
         'key' => env('ANTHROPIC_API_KEY'),
         'model' => env('ANTHROPIC_MODEL', 'claude-opus-5'),
+    ],
+
+    'gemini' => [
+        'key' => env('GEMINI_API_KEY'),
+        'model' => env('GEMINI_MODEL', 'gemini-3.6-flash'),
     ],
 
 ];

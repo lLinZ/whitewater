@@ -278,20 +278,43 @@ Lo que hay que revisar al desplegarla:
 ## Escaneo de facturas (opcional)
 
 Permite crear una compra completa con sus productos a partir de la foto de la
-factura. Es **opcional**: sin clave configurada el botón no aparece y el resto
-de la app funciona igual.
+factura. Es **opcional**: sin ninguna clave configurada el botón no aparece y
+el resto de la app funciona igual.
 
-1. Saca una clave en <https://console.anthropic.com> → API Keys.
-2. Ponla en el `.env`:
-   ```
-   ANTHROPIC_API_KEY=sk-ant-...
-   ANTHROPIC_MODEL=claude-opus-5
-   ```
-3. `php artisan config:clear && php artisan config:cache`
+Hay dos proveedores intercambiables. Basta con configurar **uno**.
 
-**Cuesta dinero por uso:** unos 3–4 céntimos de dólar por factura. Se paga por
-escaneo, no por mes. Si prefieres gastar menos a cambio de algo menos de
-precisión en fotos malas, pon `ANTHROPIC_MODEL=claude-sonnet-5`.
+| | Gemini | Anthropic |
+|---|---|---|
+| Coste | Capa gratuita con límites | ~3–4 céntimos por factura |
+| Lectura de fotos malas | Aceptable | Mejor |
+| Clave | <https://aistudio.google.com/apikey> | <https://console.anthropic.com> → API Keys |
+
+### Gemini (gratis para empezar)
+```
+INVOICE_SCANNER=auto
+GEMINI_API_KEY=AIza...
+GEMINI_MODEL=gemini-3.6-flash
+```
+Si al escanear responde que el modelo no existe, cambia `GEMINI_MODEL` por uno
+que aparezca en tu cuenta de AI Studio (`gemini-3.6-flash-lite` gasta menos
+cuota). El mensaje de error te lo dice tal cual.
+
+### Anthropic (de pago, lee mejor)
+```
+INVOICE_SCANNER=auto
+ANTHROPIC_API_KEY=sk-ant-...
+ANTHROPIC_MODEL=claude-opus-5
+```
+
+Después de tocar el `.env`, siempre:
+```bash
+php artisan config:clear && php artisan config:cache
+```
+
+Con `INVOICE_SCANNER=auto` se usa el proveedor que tenga clave; si están los
+dos, gana Anthropic. Para forzar uno concreto, pon `anthropic` o `gemini` en
+vez de `auto` — útil para volver a la capa gratuita a fin de mes sin borrar
+ninguna clave.
 
 **Tiempo de ejecución:** leer una factura tarda entre 5 y 20 segundos. Si PHP
 tiene `max_execution_time=30`, una foto complicada puede cortarse:
