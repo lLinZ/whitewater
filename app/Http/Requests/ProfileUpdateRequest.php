@@ -26,6 +26,10 @@ class ProfileUpdateRequest extends FormRequest
                 'max:255',
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
+            // Avatar de respaldo, color de acento y apariencia del miembro.
+            'avatar_emoji' => ['sometimes', 'string', 'max:16'],
+            'color' => ['sometimes', 'string', 'max:20'],
+            'theme' => ['sometimes', 'string', 'in:light,dark,system'],
         ];
     }
 }

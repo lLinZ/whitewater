@@ -44,15 +44,14 @@ class DashboardController extends Controller
         $goals = SavingsGoal::all();
         $debts = Debt::all();
 
-        // Rutinas pendientes hoy
+        // Rutinas de hoy (respetando los días de cada rutina)
         $routines = Routine::with('logs')->get();
-        $pendingRoutines = $routines->filter(function ($r) use ($today) {
-            return $r->logs->where('completed_at', '>=', $today)->isEmpty();
-        })->count();
+        $dueToday = $routines->filter->isDueOn($today);
+        $pendingRoutines = $dueToday->filter->isPendingOn($today)->count();
 
         return Inertia::render('Dashboard', [
             'greetingName' => $request->user()->name,
-            'members' => User::select('id', 'name', 'avatar_emoji', 'color')->get(),
+            'members' => User::select('id', 'name', 'avatar_emoji', 'avatar_path', 'color')->get(),
             'todayMenu' => $todayMenu,
             'weekTotal' => $weekTotal,
             'savings' => [
@@ -74,7 +73,7 @@ class DashboardController extends Controller
             ],
             'routines' => [
                 'pending' => $pendingRoutines,
-                'total' => $routines->count(),
+                'total' => $dueToday->count(),
             ],
             'streak' => $this->activityStreak(),
             'achievements' => $this->achievements(),

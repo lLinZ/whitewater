@@ -1,8 +1,12 @@
 import dayjs from 'dayjs';
 import 'dayjs/locale/es';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import isoWeek from 'dayjs/plugin/isoWeek';
 
 dayjs.extend(relativeTime);
+// isoWeek: lunes = 1 … domingo = 7, la misma numeración que usa el backend
+// para los días de las rutinas.
+dayjs.extend(isoWeek);
 dayjs.locale('es');
 
 const money = new Intl.NumberFormat('en-US', {

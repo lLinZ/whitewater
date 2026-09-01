@@ -17,7 +17,7 @@ class MarketController extends Controller
         // No forzamos red aquí: mientras compras (posible mala señal) la página
         // debe abrir al instante con la última tasa guardada. El refresco
         // automático ocurre en el Inicio y con el botón "Actualizar".
-        $trips = ShoppingTrip::with(['items', 'creator:id,name,avatar_emoji,color'])
+        $trips = ShoppingTrip::with(['items', 'creator:id,name,avatar_emoji,avatar_path,color'])
             ->orderByDesc('created_at')
             ->get()
             ->map(fn ($t) => $this->shapeTrip($t));
@@ -52,7 +52,7 @@ class MarketController extends Controller
 
     public function show(ShoppingTrip $trip)
     {
-        $trip->load(['items', 'creator:id,name,avatar_emoji,color', 'expense']);
+        $trip->load(['items', 'creator:id,name,avatar_emoji,avatar_path,color', 'expense']);
 
         // Mercado anterior (para comparar), excluyendo el actual.
         $previous = ShoppingTrip::where('id', '!=', $trip->id)

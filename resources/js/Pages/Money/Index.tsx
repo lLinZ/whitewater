@@ -1,15 +1,16 @@
 import { FormEvent, useState } from 'react';
-import { Head, router } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import {
-    Tabs, Tab, Button, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input, Chip,
+    Tabs, Tab, Button, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Input,
 } from '@heroui/react';
-import { Plus, Trash2 } from 'lucide-react';
+import { ChevronRight, Plus } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import Ring from '@/Components/ui/Ring';
 import { Card, EmptyState, MemberBadge } from '@/Components/ui/primitives';
 import AmountModal from '@/Components/ui/AmountModal';
 import DecimalInput from '@/Components/ui/DecimalInput';
+import ReceiptViewer from '@/Components/ui/ReceiptViewer';
 import { formatMoney, formatMoneyShort, formatDate } from '@/lib/format';
 import { accent } from '@/lib/accent';
 import { Debt, SavingsGoal } from '@/types';
@@ -17,7 +18,7 @@ import { Debt, SavingsGoal } from '@/types';
 interface Props {
     debts: Debt[];
     goals: SavingsGoal[];
-    summary: { totalDebt: number; totalSaved: number; savingsTarget: number };
+    summary: { totalDebt: number; totalPaid: number; totalSaved: number; savingsTarget: number };
 }
 
 export default function MoneyIndex({ debts, goals, summary }: Props) {
@@ -25,10 +26,6 @@ export default function MoneyIndex({ debts, goals, summary }: Props) {
     const [payTarget, setPayTarget] = useState<{ url: string; title: string; cta: string; label: string } | null>(null);
     const newDebt = useDisclosure();
     const newGoal = useDisclosure();
-
-    const del = (url: string, msg: string) => {
-        if (confirm(msg)) router.delete(url, { preserveScroll: true });
-    };
 
     return (
         <AppLayout title="Dinero" subtitle="Deudas y metas de ahorro">
@@ -39,10 +36,12 @@ export default function MoneyIndex({ debts, goals, summary }: Props) {
                 <Card className="bg-gradient-to-br from-rose-500 to-red-600 text-white">
                     <p className="text-xs opacity-90">Deuda total</p>
                     <p className="mt-1 text-2xl font-bold">{formatMoneyShort(summary.totalDebt)}</p>
+                    <p className="mt-0.5 text-[11px] opacity-80">{formatMoneyShort(summary.totalPaid)} ya pagados</p>
                 </Card>
                 <Card className="bg-gradient-to-br from-emerald-500 to-green-600 text-white">
                     <p className="text-xs opacity-90">Ahorrado</p>
                     <p className="mt-1 text-2xl font-bold">{formatMoneyShort(summary.totalSaved)}</p>
+                    <p className="mt-0.5 text-[11px] opacity-80">de {formatMoneyShort(summary.savingsTarget)}</p>
                 </Card>
             </div>
 
@@ -66,53 +65,32 @@ export default function MoneyIndex({ debts, goals, summary }: Props) {
                     {debts.length === 0 && (
                         <EmptyState emoji="🎉" title="Sin deudas registradas" hint="Agrega una deuda para llevar su progreso de pago." />
                     )}
-                    {debts.map((d, i) => {
-                        const a = accent(d.color);
-                        return (
-                            <motion.div key={d.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                                <Card>
-                                    <div className="flex items-center gap-4">
-                                        <Ring value={d.progress} size={80} stroke={9} color={a.ring}>
-                                            <span className="text-sm font-bold">{Math.round(d.progress)}%</span>
-                                        </Ring>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-lg">{d.emoji}</span>
-                                                <h3 className="truncate font-semibold">{d.name}</h3>
-                                            </div>
-                                            <p className="mt-0.5 text-sm text-default-500">
-                                                Faltan <span className="font-semibold text-foreground">{formatMoney(d.remaining_amount)}</span>
-                                            </p>
-                                            <p className="text-xs text-default-400">de {formatMoney(d.total_amount)}</p>
-                                        </div>
-                                    </div>
-                                    <div className="mt-3 flex items-center gap-2">
-                                        <Button
-                                            fullWidth color="primary" variant="flat" radius="full"
-                                            onPress={() => setPayTarget({ url: `/dinero/deudas/${d.id}/abono`, title: `Abonar a ${d.name}`, cta: 'Abonar', label: 'Monto del abono' })}
-                                        >
-                                            Registrar abono
-                                        </Button>
-                                        <Button isIconOnly variant="light" radius="full" onPress={() => del(`/dinero/deudas/${d.id}`, `¿Eliminar la deuda "${d.name}"?`)}>
-                                            <Trash2 size={18} className="text-default-400" />
-                                        </Button>
-                                    </div>
-                                    {d.payments && d.payments.length > 0 && (
-                                        <div className="mt-3 border-t border-divider pt-2">
-                                            {d.payments.slice(0, 3).map((p) => (
-                                                <div key={p.id} className="flex items-center justify-between py-1 text-sm">
-                                                    <span className="flex items-center gap-2 text-default-500">
-                                                        <MemberBadge member={p.payer} size={20} /> {formatDate(p.date)}
-                                                    </span>
-                                                    <span className="font-medium text-emerald-600">+{formatMoney(p.amount)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </Card>
-                            </motion.div>
-                        );
-                    })}
+                    {debts.map((d, i) => (
+                        <AccountCard
+                            key={d.id}
+                            index={i}
+                            href={`/dinero/deudas/${d.id}`}
+                            emoji={d.emoji}
+                            name={d.name}
+                            color={d.color}
+                            progress={d.progress}
+                            headline={<>Faltan <span className="font-semibold text-foreground">{formatMoney(d.remaining_amount)}</span></>}
+                            sub={`de ${formatMoney(d.total_amount)}`}
+                            cta="Registrar abono"
+                            ctaColor="primary"
+                            onCta={() => setPayTarget({
+                                url: `/dinero/deudas/${d.id}/abono`,
+                                title: `Abonar a ${d.name}`,
+                                cta: 'Abonar',
+                                label: 'Monto del abono',
+                            })}
+                            entries={(d.payments ?? []).map((p) => ({
+                                id: p.id, amount: p.amount, date: p.date, member: p.payer, receipt_url: p.receipt_url,
+                            }))}
+                            entryCount={d.payments_count ?? (d.payments?.length ?? 0)}
+                            entryNoun={['abono', 'abonos']}
+                        />
+                    ))}
                     <Button variant="flat" startContent={<Plus size={18} />} radius="full" className="mt-1" onPress={newDebt.onOpen}>
                         Nueva deuda
                     </Button>
@@ -125,54 +103,32 @@ export default function MoneyIndex({ debts, goals, summary }: Props) {
                     {goals.length === 0 && (
                         <EmptyState emoji="🎯" title="Sin metas de ahorro" hint="Crea una meta (ej: negocio Crotone) y ve creciendo tu progreso." />
                     )}
-                    {goals.map((g, i) => {
-                        const a = accent(g.color);
-                        return (
-                            <motion.div key={g.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }}>
-                                <Card>
-                                    <div className="flex items-center gap-4">
-                                        <Ring value={g.progress} size={80} stroke={9} color={a.ring}>
-                                            <span className="text-sm font-bold">{Math.round(g.progress)}%</span>
-                                        </Ring>
-                                        <div className="min-w-0 flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-lg">{g.emoji}</span>
-                                                <h3 className="truncate font-semibold">{g.name}</h3>
-                                            </div>
-                                            <p className="mt-0.5 text-sm text-default-500">
-                                                <span className="font-semibold text-foreground">{formatMoney(g.current_amount)}</span> de {formatMoney(g.target_amount)}
-                                            </p>
-                                            {g.target_date && <p className="text-xs text-default-400">Meta: {formatDate(g.target_date, 'D MMM YYYY')}</p>}
-                                        </div>
-                                    </div>
-                                    <div className="mt-3 flex items-center gap-2">
-                                        <Button
-                                            fullWidth color="success" variant="flat" radius="full"
-                                            className="text-emerald-700"
-                                            onPress={() => setPayTarget({ url: `/dinero/metas/${g.id}/aporte`, title: `Aportar a ${g.name}`, cta: 'Aportar', label: 'Monto del aporte' })}
-                                        >
-                                            Añadir aporte 💪
-                                        </Button>
-                                        <Button isIconOnly variant="light" radius="full" onPress={() => del(`/dinero/metas/${g.id}`, `¿Eliminar la meta "${g.name}"?`)}>
-                                            <Trash2 size={18} className="text-default-400" />
-                                        </Button>
-                                    </div>
-                                    {g.contributions && g.contributions.length > 0 && (
-                                        <div className="mt-3 border-t border-divider pt-2">
-                                            {g.contributions.slice(0, 3).map((c) => (
-                                                <div key={c.id} className="flex items-center justify-between py-1 text-sm">
-                                                    <span className="flex items-center gap-2 text-default-500">
-                                                        <MemberBadge member={c.contributor} size={20} /> {formatDate(c.date)}
-                                                    </span>
-                                                    <span className="font-medium text-emerald-600">+{formatMoney(c.amount)}</span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </Card>
-                            </motion.div>
-                        );
-                    })}
+                    {goals.map((g, i) => (
+                        <AccountCard
+                            key={g.id}
+                            index={i}
+                            href={`/dinero/metas/${g.id}`}
+                            emoji={g.emoji}
+                            name={g.name}
+                            color={g.color}
+                            progress={g.progress}
+                            headline={<><span className="font-semibold text-foreground">{formatMoney(g.current_amount)}</span> de {formatMoney(g.target_amount)}</>}
+                            sub={g.target_date ? `Meta: ${formatDate(g.target_date, 'D MMM YYYY')}` : undefined}
+                            cta="Añadir aporte 💪"
+                            ctaColor="success"
+                            onCta={() => setPayTarget({
+                                url: `/dinero/metas/${g.id}/aporte`,
+                                title: `Aportar a ${g.name}`,
+                                cta: 'Aportar',
+                                label: 'Monto del aporte',
+                            })}
+                            entries={(g.contributions ?? []).map((c) => ({
+                                id: c.id, amount: c.amount, date: c.date, member: c.contributor, receipt_url: c.receipt_url,
+                            }))}
+                            entryCount={g.contributions_count ?? (g.contributions?.length ?? 0)}
+                            entryNoun={['aporte', 'aportes']}
+                        />
+                    ))}
                     <Button variant="flat" startContent={<Plus size={18} />} radius="full" className="mt-1" onPress={newGoal.onOpen}>
                         Nueva meta
                     </Button>
@@ -194,6 +150,97 @@ export default function MoneyIndex({ debts, goals, summary }: Props) {
             <NewDebtModal disclosure={newDebt} />
             <NewGoalModal disclosure={newGoal} />
         </AppLayout>
+    );
+}
+
+interface PreviewEntry {
+    id: number;
+    amount: string;
+    date: string;
+    member?: { id: number; name: string; avatar_emoji: string; avatar_url?: string | null; color: string } | null;
+    receipt_url?: string | null;
+}
+
+/**
+ * Tarjeta de deuda o meta. Solo enseña los tres últimos movimientos: el
+ * historial entero, con comprobantes, vive en la pantalla de detalle.
+ */
+function AccountCard({
+    index, href, emoji, name, color, progress, headline, sub, cta, ctaColor, onCta, entries, entryCount, entryNoun,
+}: {
+    index: number;
+    href: string;
+    emoji: string;
+    name: string;
+    color: string;
+    progress: number;
+    headline: React.ReactNode;
+    sub?: string;
+    cta: string;
+    ctaColor: 'primary' | 'success';
+    onCta: () => void;
+    entries: PreviewEntry[];
+    entryCount: number;
+    entryNoun: [string, string];
+}) {
+    const a = accent(color);
+    const noun = entryCount === 1 ? entryNoun[0] : entryNoun[1];
+
+    return (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.05 }}>
+            <Card>
+                <Link href={href} className="flex items-center gap-4 active:opacity-70">
+                    <Ring value={progress} size={80} stroke={9} color={a.ring}>
+                        <span className="text-sm font-bold">{Math.round(progress)}%</span>
+                    </Ring>
+                    <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                            <span className="text-lg">{emoji}</span>
+                            <h3 className="truncate font-semibold">{name}</h3>
+                        </div>
+                        <p className="mt-0.5 text-sm text-default-500">{headline}</p>
+                        {sub && <p className="text-xs text-default-400">{sub}</p>}
+                    </div>
+                    <ChevronRight size={18} className="shrink-0 text-default-300" />
+                </Link>
+
+                <Button
+                    fullWidth color={ctaColor} variant="flat" radius="full"
+                    className={`mt-3 ${ctaColor === 'success' ? 'text-emerald-700 dark:text-emerald-300' : ''}`}
+                    onPress={onCta}
+                >
+                    {cta}
+                </Button>
+
+                {entries.length > 0 && (
+                    <div className="mt-3 border-t border-divider pt-2">
+                        {entries.map((entry) => (
+                            <div key={entry.id} className="flex items-center gap-2 py-1 text-sm">
+                                {entry.receipt_url ? (
+                                    <ReceiptViewer
+                                        url={entry.receipt_url}
+                                        alt={`${formatMoney(entry.amount)} · ${formatDate(entry.date)}`}
+                                        size={20}
+                                    />
+                                ) : (
+                                    <MemberBadge member={entry.member} size={20} />
+                                )}
+                                <span className="flex-1 text-default-500">{formatDate(entry.date)}</span>
+                                <span className="font-medium text-emerald-600 dark:text-emerald-400">
+                                    +{formatMoney(entry.amount)}
+                                </span>
+                            </div>
+                        ))}
+                        <Link
+                            href={href}
+                            className="mt-1 flex items-center justify-center gap-1 py-1.5 text-xs font-medium text-primary active:opacity-60"
+                        >
+                            Ver los {entryCount} {noun} ›
+                        </Link>
+                    </div>
+                )}
+            </Card>
+        </motion.div>
     );
 }
 

@@ -33,6 +33,18 @@ export async function getExistingSubscription(): Promise<PushSubscription | null
     return reg.pushManager.getSubscription();
 }
 
+/**
+ * Cifrado que soporta este navegador. Safari (y por tanto el iPhone) solo
+ * acepta 'aes128gcm'; mandar el 'aesgcm' viejo hace que el push se descarte
+ * en silencio. Lo consultamos en vez de asumirlo.
+ */
+export function contentEncoding(): string {
+    const supported = (PushManager as unknown as { supportedContentEncodings?: string[] })
+        .supportedContentEncodings;
+    if (supported?.includes('aes128gcm')) return 'aes128gcm';
+    return supported?.[0] ?? 'aesgcm';
+}
+
 export async function subscribeToPush(vapidPublicKey: string): Promise<PushSubscriptionJSON | null> {
     if (!isPushSupported() || !vapidPublicKey) return null;
 

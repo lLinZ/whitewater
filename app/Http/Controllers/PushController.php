@@ -13,7 +13,10 @@ class PushController extends Controller
             'endpoint' => 'required|string',
             'keys.p256dh' => 'required|string',
             'keys.auth' => 'required|string',
-            'contentEncoding' => 'nullable|string',
+            'contentEncoding' => 'nullable|string|in:aes128gcm,aesgcm',
+            // La app reenvía la suscripción al abrirse para mantenerla al día;
+            // ese caso no debe mostrar el aviso de "activadas".
+            'silent' => 'nullable|boolean',
         ]);
 
         $request->user()->pushSubscriptions()->updateOrCreate(
@@ -21,9 +24,14 @@ class PushController extends Controller
             [
                 'public_key' => $data['keys']['p256dh'],
                 'auth_token' => $data['keys']['auth'],
-                'content_encoding' => $data['contentEncoding'] ?? 'aesgcm',
+                // aes128gcm es el estándar actual (y el único que acepta Safari/iOS).
+                'content_encoding' => $data['contentEncoding'] ?? 'aes128gcm',
             ]
         );
+
+        if (! empty($data['silent'])) {
+            return back();
+        }
 
         return back()->with('success', 'Recordatorios activados 🔔');
     }

@@ -70,6 +70,7 @@ ROUTINE_REMINDER_TIME=20:00
 ```bash
 php artisan migrate --force
 php artisan db:seed --force   # opcional: crea 2 usuarios demo, tasa inicial, etc. Cambia las claves luego.
+php artisan storage:link      # necesario para las fotos de perfil
 php artisan config:cache && php artisan route:cache && php artisan view:cache
 ```
 
@@ -125,6 +126,19 @@ Esto ejecuta automáticamente: `rates:sync` (tasas 2x/día) y `routines:remind` 
 
 Repite en el iPhone de cada miembro del hogar.
 
+### Si no llegan las notificaciones
+```bash
+php artisan push:doctor          # revisa claves VAPID, HTTPS, dispositivos y cron
+php artisan push:doctor --send   # además intenta un envío real y muestra el error exacto
+```
+`push:doctor` dice **cuándo se ejecutó por última vez** el recordatorio. Si responde
+«no se ha ejecutado nunca», el problema es el cron del paso 8 y no las claves.
+
+Los tres fallos habituales, en orden:
+1. **Falta el cron del scheduler** (paso 8): sin él `routines:remind` no se ejecuta nunca.
+2. **APP_URL no es HTTPS**: el iPhone no registra el service worker.
+3. **La app no se abrió desde el ícono** de la pantalla de inicio: en Safari normal iOS no deja activar push.
+
 ## Actualizar la app más adelante
 ```bash
 cd /var/www/whitewater
@@ -132,5 +146,38 @@ git pull            # o sube los archivos nuevos
 composer install --no-dev --optimize-autoloader
 npm ci && npm run build
 php artisan migrate --force
-php artisan config:cache && php artisan route:cache && php artisan view:cache
+php artisan storage:link        # si aún no existe public/storage
+php artisan config:clear && php artisan config:cache
+php artisan route:cache && php artisan view:cache
+```
+
+## Notas de esta versión
+
+Lo que hay que revisar al desplegarla:
+
+- **`php artisan migrate --force` es obligatorio.** Añade `receipt_path` a gastos,
+  abonos y aportes, y `theme` a los usuarios.
+- **`php artisan storage:link` tiene que existir.** Sin ese enlace las fotos de
+  perfil y los comprobantes salen rotos (error 404 en `/storage/...`).
+- **La extensión `gd` de PHP** es la que reduce y endereza las fotos. Sin ella la
+  app sigue funcionando, pero guarda los originales tal cual (varios MB por
+  recibo). Comprueba con `php -m | grep gd`.
+- **`client_max_body_size`** en Nginx debe ser al menos `20M` (paso 7): las fotos
+  del iPhone pasan de los 8 MB antes de reducirse.
+- **Permisos de `storage/app/public`**: ahí van los recibos, y `www-data` tiene
+  que poder escribir.
+  ```bash
+  sudo chown -R www-data:www-data /var/www/whitewater/storage
+  sudo chmod -R 775 /var/www/whitewater/storage
+  ```
+- **`config:clear` antes de `config:cache`**: las URLs de las imágenes cambiaron a
+  rutas relativas; con la config vieja cacheada seguirían apuntando a `APP_URL`.
+
+### Copia de seguridad de los comprobantes
+Los recibos son evidencia de pagos y viven fuera de la base de datos. Para
+respaldarlos hay que llevarse las dos cosas:
+```bash
+mysqldump whitewater > /ruta/backup/whitewater-$(date +%F).sql
+tar czf /ruta/backup/whitewater-storage-$(date +%F).tar.gz \
+  -C /var/www/whitewater/storage/app/public avatars receipts
 ```

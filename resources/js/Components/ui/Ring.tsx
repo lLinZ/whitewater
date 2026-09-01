@@ -14,7 +14,9 @@ export default function Ring({
     value,
     size = 120,
     stroke = 12,
-    color = '#7c3aed',
+    // Variable CSS, no hex: así el anillo sigue al color de la app sin que
+    // cada pantalla tenga que pasarle el acento a mano.
+    color = 'var(--app-accent, #7c3aed)',
     trackClass = 'text-default-200',
     children,
 }: RingProps) {

@@ -10,7 +10,7 @@ class SavingsGoal extends Model
 
     protected $casts = [
         'target_amount' => 'decimal:2',
-        'target_date' => 'date',
+        'target_date' => 'date:Y-m-d',
     ];
 
     protected $appends = ['current_amount', 'remaining_amount', 'progress'];

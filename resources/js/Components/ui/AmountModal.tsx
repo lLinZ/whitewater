@@ -4,6 +4,7 @@ import {
 } from '@heroui/react';
 import { router } from '@inertiajs/react';
 import DecimalInput from '@/Components/ui/DecimalInput';
+import ReceiptPicker from '@/Components/ui/ReceiptPicker';
 import { today } from '@/lib/format';
 
 interface Props {
@@ -22,14 +23,26 @@ export default function AmountModal({
     const [amount, setAmount] = useState('');
     const [note, setNote] = useState('');
     const [date, setDate] = useState(today());
+    const [receipt, setReceipt] = useState<File | null>(null);
+    const [errors, setErrors] = useState<Record<string, string>>({});
     const [processing, setProcessing] = useState(false);
+
+    const reset = () => {
+        setAmount('');
+        setNote('');
+        setReceipt(null);
+        setErrors({});
+    };
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
         setProcessing(true);
-        router.post(action, { amount, note, date }, {
+        // forceFormData: sin esto la foto viajaría como un objeto vacío en JSON.
+        router.post(action, { amount, note, date, receipt }, {
+            forceFormData: true,
             preserveScroll: true,
-            onSuccess: () => { setAmount(''); setNote(''); onClose(); },
+            onError: setErrors,
+            onSuccess: () => { reset(); onClose(); },
             onFinish: () => setProcessing(false),
         });
     };
@@ -46,6 +59,8 @@ export default function AmountModal({
                             startContent={<span className="text-default-400">$</span>}
                             value={amount}
                             onValueChange={setAmount}
+                            isInvalid={!!errors.amount}
+                            errorMessage={errors.amount}
                             isRequired
                             size="lg"
                         />
@@ -53,6 +68,12 @@ export default function AmountModal({
                         {withNote && (
                             <Input label="Nota (opcional)" value={note} onValueChange={setNote} />
                         )}
+                        <ReceiptPicker
+                            value={receipt}
+                            onChange={setReceipt}
+                            error={errors.receipt}
+                            hint="Foto del recibo del banco (opcional)"
+                        />
                     </ModalBody>
                     <ModalFooter>
                         <Button variant="light" onPress={onClose}>Cancelar</Button>

@@ -3,6 +3,7 @@ import { Link, usePage, router } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
 import { Home, UtensilsCrossed, ShoppingCart, Wallet, Target, Sparkles, CheckCircle2, XCircle } from 'lucide-react';
+import { accentScale, applyTheme, watchSystemTheme } from '@/lib/theme';
 import { PageProps } from '@/types';
 
 interface AppLayoutProps {
@@ -11,6 +12,8 @@ interface AppLayoutProps {
     subtitle?: string;
     right?: ReactNode;
     back?: string;
+    /** El perfil no necesita un atajo a sí mismo. */
+    hideAvatar?: boolean;
 }
 
 const NAV = [
@@ -22,13 +25,13 @@ const NAV = [
     { href: '/hogar', label: 'Hogar', icon: Sparkles, match: ['/hogar'] },
 ];
 
-function fireConfetti() {
+function fireConfetti(colors: string[]) {
     const shoot = (particleRatio: number, opts: confetti.Options) =>
         confetti({
             ...opts,
             origin: { y: 0.7 },
             particleCount: Math.floor(200 * particleRatio),
-            colors: ['#7c3aed', '#ec4899', '#f59e0b', '#10b981', '#0ea5e9'],
+            colors,
         });
     shoot(0.25, { spread: 26, startVelocity: 55 });
     shoot(0.2, { spread: 60 });
@@ -36,11 +39,19 @@ function fireConfetti() {
     shoot(0.1, { spread: 120, startVelocity: 25, decay: 0.92, scalar: 1.2 });
 }
 
-export default function AppLayout({ children, title, subtitle, right, back }: AppLayoutProps) {
+export default function AppLayout({ children, title, subtitle, right, back, hideAvatar = false }: AppLayoutProps) {
     const { url, props } = usePage<PageProps>();
     const flash = props.flash;
+    const user = props.auth?.user;
     const [toast, setToast] = useState<{ msg: string; variant: 'success' | 'error' } | null>(null);
     const lastFlash = useRef<string>('');
+
+    // El color y el modo viven en el perfil: al cambiarlos (o al entrar desde
+    // otro dispositivo) la app se repinta sin recargar.
+    useEffect(() => {
+        applyTheme(user?.color, user?.theme);
+        return watchSystemTheme(user?.color, user?.theme);
+    }, [user?.color, user?.theme]);
 
     useEffect(() => {
         const stamp = `${flash?.success ?? ''}|${flash?.error ?? ''}|${flash?.celebrate ?? ''}`;
@@ -48,14 +59,15 @@ export default function AppLayout({ children, title, subtitle, right, back }: Ap
         lastFlash.current = stamp;
 
         if (flash?.celebrate) {
-            fireConfetti();
+            const scale = accentScale(user?.color);
+            fireConfetti([scale[5], scale[3], '#f59e0b', '#10b981', '#0ea5e9']);
             setToast({ msg: flash.celebrate, variant: 'success' });
         } else if (flash?.success) {
             setToast({ msg: flash.success, variant: 'success' });
         } else if (flash?.error) {
             setToast({ msg: flash.error, variant: 'error' });
         }
-    }, [flash]);
+    }, [flash, user?.color]);
 
     useEffect(() => {
         if (!toast) return;
@@ -81,6 +93,21 @@ export default function AppLayout({ children, title, subtitle, right, back }: Ap
                         {subtitle && <p className="truncate text-xs text-default-500">{subtitle}</p>}
                     </div>
                     {right}
+                    {!hideAvatar && user && (
+                        <Link href="/profile" aria-label="Tu perfil" className="shrink-0 active:opacity-70">
+                            {user.avatar_url ? (
+                                <img
+                                    src={user.avatar_url}
+                                    alt={user.name}
+                                    className="h-8 w-8 rounded-full object-cover ring-2 ring-primary/25"
+                                />
+                            ) : (
+                                <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-base ring-2 ring-primary/25">
+                                    {user.avatar_emoji ?? '🙂'}
+                                </span>
+                            )}
+                        </Link>
+                    )}
                 </div>
             </header>
 

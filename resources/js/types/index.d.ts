@@ -4,13 +4,27 @@ export interface User {
     email: string;
     email_verified_at?: string;
     avatar_emoji?: string;
+    avatar_url?: string | null;
+    /** Color de acento del miembro; ademas define el color de la app. */
     color?: string;
+    /** Apariencia elegida: 'light', 'dark' o 'system'. */
+    theme?: 'light' | 'dark' | 'system';
+    created_at?: string;
+}
+
+/** Pagina de resultados servida por un paginador de Laravel. */
+export interface Paginated<T> {
+    data: T[];
+    current_page: number;
+    last_page: number;
+    total: number;
 }
 
 export interface Member {
     id: number;
     name: string;
     avatar_emoji: string;
+    avatar_url?: string | null;
     color: string;
 }
 
@@ -28,6 +42,8 @@ export interface Expense {
     expense_category_id: number | null;
     category?: ExpenseCategory | null;
     creator?: Member | null;
+    /** Foto del comprobante, o null si no se adjunto ninguna. */
+    receipt_url?: string | null;
 }
 
 export interface DebtPayment {
@@ -36,10 +52,12 @@ export interface DebtPayment {
     date: string;
     note?: string | null;
     payer?: Member | null;
+    receipt_url?: string | null;
 }
 
 export interface Debt {
     id: number;
+    payments_count?: number;
     name: string;
     lender?: string | null;
     total_amount: string;
@@ -59,10 +77,52 @@ export interface SavingsContribution {
     date: string;
     note?: string | null;
     contributor?: Member | null;
+    receipt_url?: string | null;
+}
+
+/**
+ * Un movimiento de dinero visto desde la pantalla de detalle: un abono a una
+ * deuda y un aporte a una meta se pintan igual.
+ */
+export interface MoneyEntry {
+    id: number;
+    amount: number;
+    date: string;
+    note?: string | null;
+    receipt_url?: string | null;
+    member?: Member | null;
+}
+
+/** Deuda o meta, con lo comun a las dos para la vista de detalle. */
+export interface MoneyAccount {
+    kind: 'debt' | 'goal';
+    id: number;
+    name: string;
+    emoji: string;
+    color: string;
+    /** Monto total de la deuda / meta de ahorro. */
+    target: number;
+    /** Lo ya abonado o ya ahorrado. */
+    moved: number;
+    remaining: number;
+    progress: number;
+    lender?: string | null;
+    monthly_payment?: number | null;
+    due_day?: number | null;
+    target_date?: string | null;
+}
+
+export interface MoneyTotals {
+    count: number;
+    sum: number;
+    average: number;
+    this_month: number;
+    first_date: string | null;
 }
 
 export interface SavingsGoal {
     id: number;
+    contributions_count?: number;
     name: string;
     target_amount: string;
     target_date?: string | null;
@@ -107,7 +167,14 @@ export interface Routine {
     id: number;
     title: string;
     frequency: 'daily' | 'weekly' | 'monthly';
-    done_today?: boolean;
+    /** Dias ISO (1 = lunes ... 7 = domingo). Solo para frequency 'weekly'. */
+    days: number[];
+    schedule_label: string;
+    /** Si toca hoy segun sus dias. */
+    due_today: boolean;
+    done_today: boolean;
+    /** Veces que se completo en el mes en curso. */
+    done_this_month: number;
     last_completed?: string | null;
     last_by?: Member | null;
 }

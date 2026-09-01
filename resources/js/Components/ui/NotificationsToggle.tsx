@@ -4,7 +4,7 @@ import { Switch, Button } from '@heroui/react';
 import { Bell } from 'lucide-react';
 import { Card } from '@/Components/ui/primitives';
 import {
-    isPushSupported, subscribeToPush, unsubscribeFromPush, getExistingSubscription,
+    isPushSupported, subscribeToPush, unsubscribeFromPush, getExistingSubscription, contentEncoding,
 } from '@/lib/push';
 import { PageProps } from '@/types';
 
@@ -21,7 +21,17 @@ export default function NotificationsToggle() {
             window.matchMedia('(display-mode: standalone)').matches ||
             (window.navigator as { standalone?: boolean }).standalone === true;
         setStandalone(isStandalone);
-        getExistingSubscription().then((s) => setEnabled(!!s)).catch(() => {});
+
+        getExistingSubscription().then((sub) => {
+            setEnabled(!!sub);
+            if (!sub) return;
+            // Reenvía la suscripción al servidor: así se corrige el cifrado de
+            // las que se guardaron antes con el valor equivocado.
+            const json = sub.toJSON();
+            router.post('/notificaciones/suscribir', {
+                endpoint: json.endpoint, keys: json.keys, contentEncoding: contentEncoding(), silent: true,
+            }, { preserveScroll: true, preserveState: true });
+        }).catch(() => {});
     }, []);
 
     const toggle = async (on: boolean) => {
@@ -31,7 +41,7 @@ export default function NotificationsToggle() {
                 const sub = await subscribeToPush(notifications.vapidPublicKey || '');
                 if (!sub) { setBusy(false); return; } // permiso denegado o no soportado
                 router.post('/notificaciones/suscribir', {
-                    endpoint: sub.endpoint, keys: sub.keys, contentEncoding: 'aesgcm',
+                    endpoint: sub.endpoint, keys: sub.keys, contentEncoding: contentEncoding(),
                 }, {
                     preserveScroll: true,
                     onSuccess: () => setEnabled(true),

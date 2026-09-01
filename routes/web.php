@@ -24,6 +24,9 @@ Route::middleware(['auth'])->group(function () {
     // Perfil
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
+    Route::patch('/profile/apariencia', [ProfileController::class, 'updateAppearance'])->name('profile.appearance');
+    Route::post('/profile/avatar', [ProfileController::class, 'updateAvatar'])->name('profile.avatar');
+    Route::delete('/profile/avatar', [ProfileController::class, 'destroyAvatar'])->name('profile.avatar.destroy');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     // --- Cocina ---
@@ -44,6 +47,7 @@ Route::middleware(['auth'])->group(function () {
 
     // --- Finanzas ---
     Route::get('/finanzas', [FinanceController::class, 'index'])->name('finance.index');
+    Route::get('/finanzas/historial', [FinanceController::class, 'history'])->name('finance.history');
     Route::post('/finanzas/gastos', [FinanceController::class, 'storeExpense'])->name('finance.expenses.store');
     Route::delete('/finanzas/gastos/{expense}', [FinanceController::class, 'destroyExpense'])->name('finance.expenses.destroy');
     Route::post('/finanzas/categorias', [FinanceController::class, 'storeCategory'])->name('finance.categories.store');
@@ -51,11 +55,17 @@ Route::middleware(['auth'])->group(function () {
     // --- Deudas & Ahorros ---
     Route::get('/dinero', [DebtController::class, 'index'])->name('money.index');
     Route::post('/dinero/deudas', [DebtController::class, 'storeDebt'])->name('debts.store');
+    Route::get('/dinero/deudas/{debt}', [DebtController::class, 'show'])->name('debts.show');
+    Route::patch('/dinero/deudas/{debt}', [DebtController::class, 'updateDebt'])->name('debts.update');
     Route::post('/dinero/deudas/{debt}/abono', [DebtController::class, 'storePayment'])->name('debts.pay');
+    Route::delete('/dinero/deudas/{debt}/abono/{payment}', [DebtController::class, 'destroyPayment'])->name('debts.payments.destroy');
     Route::delete('/dinero/deudas/{debt}', [DebtController::class, 'destroyDebt'])->name('debts.destroy');
 
     Route::post('/dinero/metas', [SavingsController::class, 'storeGoal'])->name('savings.store');
+    Route::get('/dinero/metas/{goal}', [SavingsController::class, 'show'])->name('savings.show');
+    Route::patch('/dinero/metas/{goal}', [SavingsController::class, 'updateGoal'])->name('savings.update');
     Route::post('/dinero/metas/{goal}/aporte', [SavingsController::class, 'storeContribution'])->name('savings.contribute');
+    Route::delete('/dinero/metas/{goal}/aporte/{contribution}', [SavingsController::class, 'destroyContribution'])->name('savings.contributions.destroy');
     Route::delete('/dinero/metas/{goal}', [SavingsController::class, 'destroyGoal'])->name('savings.destroy');
 
     // --- Tasas de cambio ---
@@ -79,7 +89,9 @@ Route::middleware(['auth'])->group(function () {
     // --- Hogar (rutinas) ---
     Route::get('/hogar', [RoutineController::class, 'index'])->name('routines.index');
     Route::post('/hogar', [RoutineController::class, 'store'])->name('routines.store');
+    Route::patch('/hogar/{routine}', [RoutineController::class, 'update'])->name('routines.update');
     Route::post('/hogar/{routine}/completar', [RoutineController::class, 'complete'])->name('routines.complete');
+    Route::delete('/hogar/{routine}/completar', [RoutineController::class, 'uncomplete'])->name('routines.uncomplete');
     Route::delete('/hogar/{routine}', [RoutineController::class, 'destroy'])->name('routines.destroy');
 });
 

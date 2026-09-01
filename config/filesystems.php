@@ -41,7 +41,11 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL').'/storage',
+            // Ruta relativa a propósito: las fotos de perfil y los recibos se
+            // sirven del mismo dominio que la app. Con env('APP_URL') delante,
+            // basta que APP_URL no cuadre (otro puerto, http vs https, detrás
+            // de un proxy) para que todas las imágenes salgan rotas.
+            'url' => '/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,

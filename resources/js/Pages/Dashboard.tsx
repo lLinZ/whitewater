@@ -1,6 +1,5 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
-import { Dropdown, DropdownTrigger, DropdownMenu, DropdownItem } from '@heroui/react';
 import { Flame, PiggyBank, TrendingUp, Sparkles } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import Ring from '@/Components/ui/Ring';
@@ -36,7 +35,8 @@ const fade = {
 export default function Dashboard({
     greetingName, members, todayMenu, weekTotal, savings, debt, routines, streak, achievements,
 }: Props) {
-    const { rates } = usePage<PageProps>().props;
+    const { rates, auth } = usePage<PageProps>().props;
+    const user = auth.user;
     const savingsPct = savings.target > 0 ? (savings.total / savings.target) * 100 : 0;
 
     return (
@@ -44,26 +44,16 @@ export default function Dashboard({
             title={`${greeting()} 👋`}
             subtitle={greetingName}
             right={
-                <Dropdown placement="bottom-end">
-                    <DropdownTrigger>
-                        <button className="flex -space-x-2 active:opacity-70">
-                            {members.map((m) => <MemberBadge key={m.id} member={m} />)}
-                        </button>
-                    </DropdownTrigger>
-                    <DropdownMenu aria-label="Cuenta">
-                        <DropdownItem key="profile" onPress={() => router.visit('/profile')}>Perfil</DropdownItem>
-                        <DropdownItem key="logout" color="danger" className="text-danger" onPress={() => router.post('/logout')}>
-                            Cerrar sesión
-                        </DropdownItem>
-                    </DropdownMenu>
-                </Dropdown>
+                <Link href="/hogar" className="flex -space-x-2 active:opacity-70" aria-label="El hogar">
+                    {members.map((m) => <MemberBadge key={m.id} member={m} />)}
+                </Link>
             }
         >
             <Head title="Inicio" />
 
             {/* Racha */}
             <motion.div custom={0} variants={fade} initial="hidden" animate="show">
-                <Card className="relative overflow-hidden bg-gradient-to-br from-violet-500 to-purple-600 text-white">
+                <Card className={`relative overflow-hidden bg-gradient-to-br text-white ${accent(user.color).gradient}`}>
                     <div className="relative z-10 flex items-center justify-between">
                         <div>
                             <p className="text-sm opacity-90">Racha del hogar</p>
@@ -96,7 +86,7 @@ export default function Dashboard({
                         <Card className="h-full">
                             <div className="flex items-center justify-between">
                                 <span className="text-xs font-medium text-default-500">Gasto semanal</span>
-                                <TrendingUp size={16} className="text-violet-500" />
+                                <TrendingUp size={16} className="text-primary" />
                             </div>
                             <p className="mt-2 text-2xl font-bold tracking-tight">{formatMoney(weekTotal)}</p>
                             <p className="mt-1 text-xs text-default-400">Ver detalle ›</p>

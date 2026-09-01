@@ -44,7 +44,7 @@ class RegisteredUserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'avatar_emoji' => $request->avatar_emoji ?: '🙂',
-            'color' => $request->color ?: 'primary',
+            'color' => $request->color ?: 'violet',
         ]);
 
         event(new Registered($user));

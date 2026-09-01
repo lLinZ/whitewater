@@ -74,10 +74,24 @@ export function EmptyState({ emoji, title, hint }: { emoji: string; title: strin
 export function MemberBadge({ member, size = 28 }: { member?: Member | null; size?: number }) {
     if (!member) return null;
     const a = accent(member.color);
+
+    // Con foto se muestra la foto; si no, el emoji del miembro.
+    if (member.avatar_url) {
+        return (
+            <img
+                src={member.avatar_url}
+                alt={member.name}
+                title={member.name}
+                className="inline-block shrink-0 rounded-full object-cover"
+                style={{ width: size, height: size }}
+            />
+        );
+    }
+
     return (
         <span
             title={member.name}
-            className={`inline-flex items-center justify-center rounded-full ${a.bgSoft}`}
+            className={`inline-flex shrink-0 items-center justify-center rounded-full ${a.bgSoft}`}
             style={{ width: size, height: size, fontSize: size * 0.5 }}
         >
             {member.avatar_emoji}

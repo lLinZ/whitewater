@@ -2,10 +2,11 @@ import { FormEventHandler } from 'react';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { Input, Button } from '@heroui/react';
 import AuthShell from '@/Layouts/AuthShell';
-import { ACCENTS, AccentKey } from '@/lib/accent';
+import { COLOR_LABELS, ThemeColor, swatch } from '@/lib/theme';
 
 const EMOJIS = ['🧔', '👩', '🧑', '👨', '👧', '🧑‍🦱', '🐱', '🚀'];
-const COLORS: AccentKey[] = ['primary', 'rose', 'emerald', 'sky', 'amber', 'pink'];
+// El color elegido aquí tiñe la app entera; luego se cambia desde el perfil.
+const COLORS: ThemeColor[] = ['violet', 'indigo', 'blue', 'teal', 'emerald', 'amber', 'orange', 'rose', 'pink', 'slate'];
 
 export default function Register() {
     const { data, setData, post, processing, errors, reset } = useForm({
@@ -14,7 +15,7 @@ export default function Register() {
         password: '',
         password_confirmation: '',
         avatar_emoji: '🧔',
-        color: 'primary',
+        color: 'violet',
     });
 
     const submit: FormEventHandler = (e) => {
@@ -40,10 +41,13 @@ export default function Register() {
                             </button>
                         ))}
                     </div>
-                    <div className="mt-3 flex gap-2">
+                    <p className="mb-2 mt-4 text-sm text-default-500">Tu color</p>
+                    <div className="grid grid-cols-5 gap-2">
                         {COLORS.map((c) => (
                             <button type="button" key={c} onClick={() => setData('color', c)}
-                                className={`h-8 w-8 rounded-full ${ACCENTS[c].dot} transition ${data.color === c ? 'ring-2 ring-offset-2 ring-foreground/40' : 'opacity-70'}`} />
+                                aria-label={COLOR_LABELS[c]} aria-pressed={data.color === c}
+                                style={{ background: swatch(c) }}
+                                className={`aspect-square rounded-2xl transition active:scale-90 ${data.color === c ? 'ring-2 ring-offset-2 ring-foreground/40' : 'opacity-70'}`} />
                         ))}
                     </div>
                 </div>
