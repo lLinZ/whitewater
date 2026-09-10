@@ -4,6 +4,7 @@ namespace App\Services\Invoices;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use RuntimeException;
 
 /**
@@ -56,7 +57,7 @@ class GeminiReader implements InvoiceReader
                 ]],
                 'generationConfig' => [
                     'response_mime_type' => 'application/json',
-                    'response_schema' => InvoiceSchema::schema(),
+                    'response_schema' => InvoiceSchema::forGemini(),
                     // Leer un ticket no es una tarea creativa: se quiere el
                     // mismo resultado cada vez que se lee la misma foto.
                     'temperature' => 0,
@@ -80,8 +81,13 @@ class GeminiReader implements InvoiceReader
             throw new RuntimeException("Gemini no pudo procesar la imagen (motivo: {$finish}).");
         }
 
-        $text = $body['candidates'][0]['content']['parts'][0]['text'] ?? null;
-        $data = $text !== null ? json_decode($text, true) : null;
+        // Los modelos que razonan pueden devolver el razonamiento como partes
+        // aparte (thought: true) antes de la respuesta: solo cuenta el resto.
+        $text = collect($body['candidates'][0]['content']['parts'] ?? [])
+            ->reject(fn ($part) => $part['thought'] ?? false)
+            ->pluck('text')
+            ->implode('');
+        $data = $text !== '' ? json_decode($text, true) : null;
 
         if (! is_array($data)) {
             Log::warning('Respuesta de Gemini ilegible: '.json_encode($body));
@@ -96,7 +102,9 @@ class GeminiReader implements InvoiceReader
     private function explain(int $status, string $reason): string
     {
         return match ($status) {
-            400 => "Gemini rechazó la petición: {$reason}. Revisa GEMINI_MODEL en el .env.",
+            // El mensaje de Google puede ocupar media pantalla; el completo
+            // ya quedó en el log.
+            400 => 'Gemini rechazó la petición: '.Str::limit(rtrim($reason, '.'), 160).'. El detalle completo está en storage/logs/laravel.log.',
             401, 403 => 'La clave de Gemini no es válida o no tiene permiso. Revisa GEMINI_API_KEY.',
             404 => 'Ese modelo de Gemini no existe. Cambia GEMINI_MODEL en el .env por uno disponible en tu cuenta.',
             429 => 'Se agotó la cuota gratuita de Gemini por ahora. Prueba de nuevo en un rato.',

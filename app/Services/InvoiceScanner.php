@@ -120,19 +120,45 @@ class InvoiceScanner
      */
     public function normalize(array $data): array
     {
+        $corrected = 0;
+
         $items = collect($data['items'] ?? [])
             ->filter(fn ($item) => trim((string) ($item['name'] ?? '')) !== '')
-            ->map(fn ($item) => [
-                'name' => trim((string) $item['name']),
-                'brand' => $this->blankToNull($item['brand'] ?? null),
-                'size' => $this->blankToNull($item['size'] ?? null),
+            ->map(function ($item) use (&$corrected) {
                 // Los ceros van con decimal: max() devuelve el argumento tal
                 // cual, y un 0 entero rompería el tipo del campo.
-                'quantity' => max(0.01, (float) ($item['quantity'] ?? 1)),
-                'unit_price' => max(0.0, (float) ($item['unit_price'] ?? 0)),
-            ])
+                $quantity = max(0.01, (float) ($item['quantity'] ?? 1));
+                $unitPrice = max(0.0, (float) ($item['unit_price'] ?? 0));
+
+                [$quantity, $unitPrice, $fixed] = $this->reconcile(
+                    $quantity, $unitPrice, $this->toFloatOrNull($item['line_total'] ?? null)
+                );
+                $corrected += (int) $fixed;
+
+                return [
+                    'name' => trim((string) $item['name']),
+                    'brand' => $this->blankToNull($item['brand'] ?? null),
+                    'size' => $this->blankToNull($item['size'] ?? null),
+                    'quantity' => $quantity,
+                    'unit_price' => $unitPrice,
+                    'taxed' => is_bool($item['taxed'] ?? null) ? $item['taxed'] : null,
+                ];
+            })
             ->values()
             ->all();
+
+        $confidence = in_array($data['confidence'] ?? null, ['alta', 'media', 'baja'], true)
+            ? $data['confidence']
+            : 'media';
+        $notes = $this->blankToNull($data['notes'] ?? null);
+
+        if ($corrected > 0) {
+            // Si hubo que arreglar la lectura, "alta" ya no es verdad.
+            $confidence = $confidence === 'alta' ? 'media' : $confidence;
+            $notes = trim(($notes ?? '').' '.($corrected === 1
+                ? 'Se ajustó 1 producto para que cuadre con su importe.'
+                : "Se ajustaron {$corrected} productos para que cuadren con su importe."));
+        }
 
         $itemsTotal = array_sum(array_map(
             fn ($item) => $item['unit_price'] * $item['quantity'],
@@ -150,11 +176,43 @@ class InvoiceScanner
             'tax' => $this->toFloatOrNull($data['tax'] ?? null),
             'total' => $this->toFloatOrNull($data['total'] ?? null) ?? round($itemsTotal, 2),
             'items_total' => round($itemsTotal, 2),
-            'confidence' => in_array($data['confidence'] ?? null, ['alta', 'media', 'baja'], true)
-                ? $data['confidence']
-                : 'media',
-            'notes' => $this->blankToNull($data['notes'] ?? null),
+            'confidence' => $confidence,
+            'notes' => $notes,
         ];
+    }
+
+    /**
+     * Hace cuadrar cantidad × precio con el importe impreso de la línea.
+     *
+     * El importe de la derecha es el número más grande y más legible de cada
+     * línea, y la suma de todos es el subtotal: es el dato en el que más se
+     * puede confiar. Cuando no cuadra, lo que falla es la cantidad o el
+     * precio unitario, y cuál de los dos se deduce de cómo falla:
+     *
+     * - Si el precio unitario es igual al importe, el modelo copió el importe
+     *   como precio ("2x Bs 1.173,15" leído como 2 a 2.346,30): se divide.
+     * - Si es un número distinto, ese precio salió de la línea "Nx Bs P" y es
+     *   fiable; lo que se leyó mal es la cantidad (0.385 kg tomado por 385).
+     *
+     * @return array{0: float, 1: float, 2: bool} cantidad, precio, si se tocó
+     */
+    private function reconcile(float $quantity, float $unitPrice, ?float $lineTotal): array
+    {
+        if ($lineTotal === null || $lineTotal <= 0) {
+            return [$quantity, $unitPrice, false];
+        }
+
+        $tolerance = max(0.02, $lineTotal * 0.01);
+
+        if (abs($quantity * $unitPrice - $lineTotal) <= $tolerance) {
+            return [$quantity, $unitPrice, false];
+        }
+
+        if ($unitPrice <= 0 || abs($unitPrice - $lineTotal) <= $tolerance) {
+            return [$quantity, round($lineTotal / $quantity, 2), true];
+        }
+
+        return [max(0.01, round($lineTotal / $unitPrice, 3)), $unitPrice, true];
     }
 
     private function blankToNull(mixed $value): ?string

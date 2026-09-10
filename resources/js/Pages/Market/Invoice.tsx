@@ -16,6 +16,8 @@ interface ScannedItem {
     size: string | null;
     quantity: number;
     unit_price: number;
+    /** Si paga IVA según el ticket ((G) o (E)); null si no lo marca. */
+    taxed: boolean | null;
 }
 
 interface Invoice {
@@ -45,6 +47,7 @@ interface Draft {
     size: string;
     quantity: string;
     price: string;
+    taxed: boolean | null;
 }
 
 type RateKey = 'bcv' | 'parallel';
@@ -75,6 +78,7 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
             size: item.size ?? '',
             quantity: String(item.quantity),
             price: String(item.unit_price),
+            taxed: item.taxed ?? null,
         })),
     );
 
@@ -86,37 +90,55 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
         ?? (invoice.total !== null && invoice.tax !== null ? invoice.total - invoice.tax : null);
     const hasTax = (invoice.tax ?? 0) > 0 && declaredSubtotal !== null && declaredSubtotal > 0;
 
-    /**
-     * Cuánto sube cada línea al repartirle el IVA. Se ancla a la proporción de
-     * la factura (total / base) y no a la suma en pantalla: así corregir un
-     * precio no deforma el resto.
+    /*
+     * Cómo se reparte el IVA. Los tickets fiscales marcan cada línea con (G)
+     * o (E): entonces el IVA va solo a las gravadas, a la alícuota que sale de
+     * la propia factura (IVA / base de las gravadas). Si el ticket no lo marca
+     * se reparte parejo, en proporción total / base.
+     *
+     * Las dos se anclan a lo leído y no a lo que hay en pantalla: así corregir
+     * un precio no deforma el resto.
      */
-    const taxFactor = includeTax && hasTax && invoice.total
-        ? invoice.total / (declaredSubtotal as number)
-        : 1;
+    const taxedBase = invoice.items
+        .filter((i) => i.taxed)
+        .reduce((sum, i) => sum + i.unit_price * i.quantity, 0);
+    const taxRate = hasTax && taxedBase > 0 ? (invoice.tax as number) / taxedBase : 0;
+    // Una alícuota fuera de lo posible en Venezuela (16 %, 8 %, 31 % las de
+    // lujo) es señal de que las marcas se leyeron mal: mejor repartir parejo.
+    const perItem = invoice.items.some((i) => i.taxed !== null) && taxRate > 0 && taxRate <= 0.35;
+    const uniformFactor = hasTax && invoice.total ? invoice.total / (declaredSubtotal as number) : 1;
 
-    /** Pasa un precio de la factura a dólares. En dólares no se convierte. */
+    /** Cuánto sube una línea al repartirle el IVA. */
+    const factorFor = (taxed: boolean | null): number => {
+        if (!includeTax || !hasTax) return 1;
+        if (perItem) return taxed ? 1 + taxRate : 1;
+        return uniformFactor;
+    };
+
+    /** Pasa un monto de la factura a dólares. En dólares no se convierte. */
     const toUsd = (value: number): number => {
-        const withTax = value * taxFactor;
-        if (!inBolivares) return withTax;
+        if (!inBolivares) return value;
         if (!rate || rate <= 0) return 0;
-        return withTax / rate;
+        return value / rate;
     };
 
     const rows = useMemo(
         () => items.map((item) => {
             const price = parseDecimal(item.price) ?? 0;
             const quantity = parseDecimal(item.quantity) ?? 1;
-            return { ...item, price, quantity, usd: toUsd(price), subtotal: toUsd(price) * quantity };
+            const factor = factorFor(item.taxed);
+            const usd = toUsd(price * factor);
+            return { ...item, price, quantity, factor, usd, subtotal: usd * quantity };
         }),
         // eslint-disable-next-line react-hooks/exhaustive-deps
-        [items, rate, inBolivares, taxFactor],
+        [items, rate, inBolivares, includeTax, perItem, taxRate, uniformFactor],
     );
 
     // Suma de las líneas tal como vienen en la factura, sin IVA repartido.
     const linesTotal = rows.reduce((sum, r) => sum + r.price * r.quantity, 0);
-    const totalOriginal = linesTotal * taxFactor;
+    const totalOriginal = rows.reduce((sum, r) => sum + r.price * r.quantity * r.factor, 0);
     const totalUsd = rows.reduce((sum, r) => sum + r.subtotal, 0);
+    const taxedCount = rows.filter((r) => r.taxed).length;
 
     // El descuadre se mide contra la base imponible, no contra el total: en una
     // factura con IVA las líneas nunca suman el total, y avisar de eso siempre
@@ -131,7 +153,7 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
 
     const add = () => setItems((current) => [
         ...current,
-        { key: Math.max(0, ...current.map((i) => i.key)) + 1, name: '', brand: '', size: '', quantity: '1', price: '' },
+        { key: Math.max(0, ...current.map((i) => i.key)) + 1, name: '', brand: '', size: '', quantity: '1', price: '', taxed: null },
     ]);
 
     const discard = () => {
@@ -252,9 +274,11 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
                         <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium">Repartir el IVA entre los productos</p>
                             <p className="text-xs text-default-400">
-                                {includeTax
-                                    ? `Cada precio sube un ${Math.round((taxFactor - 1) * 100)}%: es lo que pagaste de verdad.`
-                                    : 'Los precios quedan sin IVA, como en el estante.'}
+                                {!includeTax
+                                    ? 'Los precios quedan sin IVA, como en el estante.'
+                                    : perItem
+                                        ? `El ${Math.round(taxRate * 100)}% va solo a los ${taxedCount} productos que lo pagan; los exentos no cambian.`
+                                        : `Cada precio sube un ${Math.round((uniformFactor - 1) * 100)}%: es lo que pagaste de verdad.`}
                             </p>
                         </div>
                         <Switch size="sm" color="primary" isSelected={includeTax} onValueChange={setIncludeTax} />
@@ -291,6 +315,18 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
                                 size="sm" label="Producto" value={row.name}
                                 onValueChange={(v) => patch(row.key, { name: v })}
                             />
+                            {/* La marca (G)/(E) del ticket, por si el lector la confundió */}
+                            {hasTax && perItem && (
+                                <button
+                                    onClick={() => patch(row.key, { taxed: !row.taxed })}
+                                    aria-pressed={!!row.taxed}
+                                    className={`mt-2.5 shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium transition active:scale-95 ${
+                                        row.taxed ? 'bg-primary/15 text-primary' : 'bg-default-100 text-default-500'
+                                    }`}
+                                >
+                                    {row.taxed ? 'Con IVA' : 'Exento'}
+                                </button>
+                            )}
                             <button
                                 onClick={() => remove(row.key)} aria-label="Quitar producto"
                                 className="mt-2 shrink-0 text-default-300 active:text-rose-500"
