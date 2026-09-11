@@ -230,16 +230,21 @@ Los fallos habituales, en orden:
 > (o estás en otra rama) y `composer install`.
 
 ## Actualizar la app más adelante
+
+Siempre el bloque entero, aunque el cambio parezca pequeño:
+
 ```bash
-cd /var/www/whitewater
-git pull            # o sube los archivos nuevos
-composer install --no-dev --optimize-autoloader
-npm ci && npm run build
-php artisan migrate --force
-php artisan storage:link        # si aún no existe public/storage
-php artisan config:clear && php artisan config:cache
-php artisan route:cache && php artisan view:cache
+cd /var/www/whitewater && git pull && composer install --no-dev --optimize-autoloader && npm ci && npm run build && php artisan migrate --force && php artisan optimize:clear && php artisan optimize
 ```
+
+- **`optimize:clear` + `optimize` no son opcionales.** Las rutas, la configuración
+  y las vistas están en caché: sin refrescarla, una ruta nueva responde 404 aunque
+  el código esté subido. Así falló la conversión de monedas de los gastos
+  (`/tasas/dia`) y "quitar factura" del mercado.
+- `migrate --force` sin migraciones pendientes no hace nada; no hace falta pensar
+  si esta vez toca.
+- Comprobar que una ruta nueva está viva: `php artisan route:list --path=tasas`.
+- Si falta el enlace de las fotos: `php artisan storage:link` (una sola vez).
 
 ## Notas de esta versión
 

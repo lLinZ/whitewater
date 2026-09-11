@@ -74,13 +74,18 @@ export default function ExpenseModal({ isOpen, onClose, categories, expense = nu
         setErrors({});
     }, [isOpen, expense]);
 
-    const { rates, loading } = useRatesOn(date);
+    const { rates, loading, failed } = useRatesOn(date);
     const paid = parseDecimal(amount);
     const usd = paid !== null ? toUsd(paid, currency, rates) : null;
     const eq = paid !== null && usd !== null && rates
         ? paidEquivalents({ amount: usd, currency, original_amount: paid, rates })
         : null;
-    const missingRate = currency !== 'USD' && !loading && !rates?.bcv_usd;
+    // Solo se bloquea el guardado cuando el servidor dijo que no hay tasas.
+    // Si la consulta falló no se sabe, y quien convierte de verdad al guardar
+    // es el servidor: que decida él.
+    const converts = currency !== 'USD' && !loading;
+    const missingRate = converts && !failed && !rates?.bcv_usd;
+    const previewFailed = converts && failed;
 
     const submit = (e: FormEvent) => {
         e.preventDefault();
@@ -162,6 +167,12 @@ export default function ExpenseModal({ isOpen, onClose, categories, expense = nu
                             {missingRate && (
                                 <p className="mt-1.5 px-1 text-xs text-rose-500">
                                     No hay tasa guardada para convertir. Anótalo en dólares o actualiza las tasas desde el Inicio.
+                                </p>
+                            )}
+                            {previewFailed && (
+                                <p className="mt-1.5 px-1 text-xs text-amber-600 dark:text-amber-400">
+                                    No se pudo consultar la tasa de ese día para mostrar la cuenta. Puedes guardar igual:
+                                    el servidor lo convierte con la tasa del día al guardar.
                                 </p>
                             )}
                         </div>
