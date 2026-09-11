@@ -279,6 +279,40 @@ test('la revisión avisa a qué mercado se suma la factura', function () {
         );
 });
 
+test('sumando a un mercado, la revisión convierte con la tasa de ese mercado', function () {
+    // El mercado se hizo con BCV a 40; hoy está a 45. Con la de hoy, los
+    // bolívares de esta factura no cuadrarían con los del resto del mercado.
+    $trip = ShoppingTrip::create([
+        'name' => 'Ayer', 'status' => 'active', 'created_by' => $this->user->id,
+        'rate_bcv_usd' => 40, 'rate_parallel_usd' => 50, 'rate_bcv_eur' => 44,
+    ]);
+    ExchangeRate::create([
+        'bcv_usd' => 45, 'parallel_usd' => 55, 'bcv_eur' => 49,
+        'fetched_at' => now(), 'rate_date' => now()->toDateString(),
+    ]);
+
+    fakeScanner();
+    actingAs($this->user)->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg'), 'trip' => $trip->id]);
+
+    actingAs($this->user)->get('/mercado/factura')
+        ->assertInertia(fn (Assert $p) => $p
+            ->where('rates.bcv_usd', 40)
+            ->where('rates.parallel_usd', 50)
+        );
+});
+
+test('una factura suelta se convierte con la tasa de hoy', function () {
+    ExchangeRate::create([
+        'bcv_usd' => 45, 'parallel_usd' => 55, 'bcv_eur' => 49,
+        'fetched_at' => now(), 'rate_date' => now()->toDateString(),
+    ]);
+    fakeScanner();
+    actingAs($this->user)->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg')]);
+
+    actingAs($this->user)->get('/mercado/factura')
+        ->assertInertia(fn (Assert $p) => $p->where('rates.bcv_usd', 45));
+});
+
 test('una factura suelta no dice que se suma a ningún mercado', function () {
     fakeScanner();
     actingAs($this->user)->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg')]);

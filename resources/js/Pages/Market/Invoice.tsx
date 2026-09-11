@@ -6,7 +6,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import { Card, SectionHeader } from '@/Components/ui/primitives';
 import DecimalInput from '@/Components/ui/DecimalInput';
 import ReceiptViewer from '@/Components/ui/ReceiptViewer';
-import { formatBs, formatMoney, parseDecimal, today } from '@/lib/format';
+import { formatBs, formatMoney, formatUsdt, parseDecimal, today } from '@/lib/format';
 import { accent } from '@/lib/accent';
 import { PageProps, Rates } from '@/types';
 
@@ -52,8 +52,6 @@ interface Draft {
     taxed: boolean | null;
 }
 
-type RateKey = 'bcv' | 'parallel';
-
 const CONFIDENCE: Record<Invoice['confidence'], { label: string; tone: string }> = {
     alta: { label: 'Lectura clara', tone: 'text-emerald-600 dark:text-emerald-400' },
     media: { label: 'Revisa los precios', tone: 'text-amber-600 dark:text-amber-400' },
@@ -67,7 +65,6 @@ export default function MarketInvoice({ invoice, receiptUrl, rates, trip }: Prop
     const [name, setName] = useState('');
     const [store, setStore] = useState(invoice.store ?? '');
     const [date, setDate] = useState(invoice.date ?? today());
-    const [rateKey, setRateKey] = useState<RateKey>('parallel');
     // El IVA se reparte por defecto: lo que le importa al presupuesto del
     // hogar es lo que salio del bolsillo, no el precio de estante.
     const [includeTax, setIncludeTax] = useState(true);
@@ -84,8 +81,11 @@ export default function MarketInvoice({ invoice, receiptUrl, rates, trip }: Prop
         })),
     );
 
-    // Cuántos bolívares vale un dólar con la tasa elegida.
-    const rate = rateKey === 'bcv' ? rates?.bcv_usd ?? null : rates?.parallel_usd ?? null;
+    // Siempre a BCV: el mercado pasa sus dólares a bolívares con la tasa BCV,
+    // y guardar a otra tasa haría que mostrara bolívares que no se pagaron.
+    // El paralelo solo sirve para decir cuánto es en USDT.
+    const rate = rates?.bcv_usd ?? null;
+    const parallel = rates?.parallel_usd ?? null;
 
     // Base imponible declarada: el subtotal, o el total menos el IVA.
     const declaredSubtotal = invoice.subtotal
@@ -238,34 +238,23 @@ export default function MarketInvoice({ invoice, receiptUrl, rates, trip }: Prop
                 <>
                     <SectionHeader title="Tasa de cambio" />
                     <Card className="flex flex-col gap-3">
-                        <p className="text-xs text-default-500">
-                            La factura está en bolívares. Elige con qué tasa valorarla; los precios se
-                            guardan en dólares.
-                        </p>
-                        <div className="flex gap-2 rounded-2xl bg-content2 p-1">
-                            {([
-                                { key: 'bcv' as const, label: 'BCV', value: rates?.bcv_usd ?? null },
-                                { key: 'parallel' as const, label: 'Paralelo / USDT', value: rates?.parallel_usd ?? null },
-                            ]).map((option) => {
-                                const on = rateKey === option.key;
-                                return (
-                                    <button
-                                        key={option.key}
-                                        onClick={() => setRateKey(option.key)}
-                                        aria-pressed={on}
-                                        disabled={!option.value}
-                                        className={`flex flex-1 flex-col items-center rounded-xl py-2 text-xs font-medium transition active:scale-95 disabled:opacity-40 ${
-                                            on ? 'bg-content1 text-primary shadow-soft' : 'text-default-500'
-                                        }`}
-                                    >
-                                        <span>{option.label}</span>
-                                        <span className="text-[11px] opacity-70">
-                                            {option.value ? formatBs(option.value) : 'sin tasa'}
-                                        </span>
-                                    </button>
-                                );
-                            })}
+                        <div className="grid grid-cols-2 gap-2 text-center">
+                            <div className="rounded-2xl bg-content2 py-2">
+                                <p className="text-[11px] text-default-500">BCV</p>
+                                <p className="text-sm font-semibold">{rate ? formatBs(rate) : 'sin tasa'}</p>
+                            </div>
+                            <div className="rounded-2xl bg-content2 py-2">
+                                <p className="text-[11px] text-default-500">USDT</p>
+                                <p className="text-sm font-semibold">{parallel ? formatBs(parallel) : 'sin tasa'}</p>
+                            </div>
                         </div>
+                        <p className="text-xs text-default-500">
+                            Los precios se guardan en dólares a tasa BCV, como en el resto de la app, así el
+                            mercado muestra exactamente los bolívares de la factura. Abajo ves cuánto es en USDT.
+                        </p>
+                        {trip && (
+                            <p className="text-xs text-default-400">Son las tasas de «{trip.name}», para que todo el mercado cuadre.</p>
+                        )}
                         {missingRate && (
                             <p className="text-xs text-rose-500">
                                 No hay tasa guardada. Actualízala desde el Inicio antes de continuar.
@@ -301,7 +290,8 @@ export default function MarketInvoice({ invoice, receiptUrl, rates, trip }: Prop
                 <p className="mt-1 text-3xl font-bold">{formatMoney(totalUsd)}</p>
                 {inBolivares && (
                     <p className="mt-0.5 text-xs opacity-80">
-                        {formatBs(totalOriginal)} a {rateKey === 'bcv' ? 'tasa BCV' : 'paralelo'}
+                        {formatBs(totalOriginal)}
+                        {parallel ? ` · ${formatUsdt(totalOriginal / parallel)}` : ''}
                         {hasTax && (includeTax ? ' · IVA incluido' : ' · sin IVA')}
                     </p>
                 )}

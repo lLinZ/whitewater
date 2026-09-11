@@ -52,6 +52,17 @@ export interface RateLike {
 }
 
 /** Convierte un monto en USD a Bs (BCV), Bs (USDT/paralelo) y EUR. */
+/**
+ * Un monto en dólares BCV, visto de las tres formas en que se paga.
+ *
+ * - bcv: los bolívares que salen del bolsillo (dólares × tasa BCV).
+ * - usdt: esos mismos bolívares, pagados con USDT a la tasa paralela.
+ * - eur: esos mismos bolívares, en euros a la tasa BCV del euro.
+ *
+ * USDT y euro parten de los bolívares, no del dólar: la pregunta es "¿cuánto
+ * me cuesta esto si pago con USDT?", no "¿cuántos bolívares serían a otra
+ * tasa?".
+ */
 export function convertUsd(usd: number, r?: RateLike | null) {
     const bcvUsd = r?.bcv_usd ?? null;
     const parUsd = r?.parallel_usd ?? null;
@@ -59,9 +70,14 @@ export function convertUsd(usd: number, r?: RateLike | null) {
     return {
         usd,
         bcv: bcvUsd ? usd * bcvUsd : null,
-        usdt: parUsd ? usd * parUsd : null,
+        usdt: bcvUsd && parUsd && parUsd > 0 ? usd * (bcvUsd / parUsd) : null,
         eur: bcvUsd && bcvEur && bcvEur > 0 ? usd * (bcvUsd / bcvEur) : null,
     };
+}
+
+export function formatUsdt(value: number | null | undefined): string {
+    if (value === null || value === undefined || !Number.isFinite(value)) return '—';
+    return `${bs.format(value)} USDT`;
 }
 
 /**

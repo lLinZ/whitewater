@@ -30,10 +30,14 @@ class ExchangeRate extends Model
     ): array {
         $eur = ($bcvUsd && $bcvEur && $bcvEur > 0) ? $usd * ($bcvUsd / $bcvEur) : null;
 
+        // USDT, como el euro, parte de los bolívares: cuántos USDT hacen falta
+        // para pagar esos bolívares a la tasa paralela.
+        $usdt = ($bcvUsd && $parallelUsd && $parallelUsd > 0) ? $usd * ($bcvUsd / $parallelUsd) : null;
+
         return [
             'usd' => round($usd, 2),
             'bcv' => $bcvUsd ? round($usd * $bcvUsd, 2) : null,
-            'usdt' => $parallelUsd ? round($usd * $parallelUsd, 2) : null,
+            'usdt' => $usdt !== null ? round($usdt, 2) : null,
             'eur' => $eur !== null ? round($eur, 2) : null,
         ];
     }

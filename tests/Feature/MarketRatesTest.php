@@ -44,7 +44,8 @@ test('el servicio obtiene y guarda las tasas', function () {
 test('la conversión USD -> BCV/USDT/EUR es correcta', function () {
     $c = ExchangeRate::convert(10, 700, 800, 810);
     expect($c['bcv'])->toBe(7000.0);
-    expect($c['usdt'])->toBe(8000.0);
+    // Los 7000 Bs pagados con USDT a 800: 8.75 USDT, no "8000 Bs".
+    expect($c['usdt'])->toBe(8.75);
     expect($c['eur'])->toBe(round(10 * 700 / 810, 2)); // 8.64
 });
 

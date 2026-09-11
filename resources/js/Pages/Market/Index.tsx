@@ -5,7 +5,7 @@ import AppLayout from '@/Layouts/AppLayout';
 import RatesCard from '@/Components/ui/RatesCard';
 import ScanInvoiceButton from '@/Components/ui/ScanInvoiceButton';
 import { Card, EmptyState } from '@/Components/ui/primitives';
-import { formatMoney, formatBs, formatDate, convertUsd } from '@/lib/format';
+import { formatMoney, formatBs, formatUsdt, formatDate, convertUsd } from '@/lib/format';
 import { accent } from '@/lib/accent';
 import { PageProps, ShoppingTrip } from '@/types';
 
@@ -71,7 +71,7 @@ export default function MarketIndex({ trips }: { trips: ShoppingTrip[] }) {
                                 <div className="mt-3 flex items-end justify-between">
                                     <div>
                                         <p className="text-2xl font-bold tracking-tight">{formatMoney(t.total_usd)}</p>
-                                        <p className="text-xs text-default-400">{formatBs(conv.bcv)} · {formatBs(conv.usdt)} (USDT)</p>
+                                        <p className="text-xs text-default-400">{formatBs(conv.bcv)} · {formatUsdt(conv.usdt)}</p>
                                     </div>
                                     {delta !== null && Math.abs(delta) > 0.005 && (
                                         <span className={`flex items-center gap-0.5 rounded-full px-2 py-1 text-xs font-semibold ${

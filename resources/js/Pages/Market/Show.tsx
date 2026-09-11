@@ -10,7 +10,7 @@ import { Card, SectionHeader } from '@/Components/ui/primitives';
 import DecimalInput from '@/Components/ui/DecimalInput';
 import ReceiptViewer from '@/Components/ui/ReceiptViewer';
 import ScanInvoiceButton from '@/Components/ui/ScanInvoiceButton';
-import { formatMoney, formatBs, formatEur, formatDate, convertUsd, fromNow, parseDecimal } from '@/lib/format';
+import { formatMoney, formatBs, formatEur, formatUsdt, formatDate, convertUsd, fromNow, parseDecimal } from '@/lib/format';
 import { accent } from '@/lib/accent';
 import { PageProps, ShoppingTrip, ShoppingItem, ShoppingReceipt } from '@/types';
 
@@ -263,16 +263,17 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                 <p className="text-sm opacity-90">Total del mercado</p>
                 <p className="mt-1 text-4xl font-extrabold tracking-tight">{formatMoney(trip.total_usd)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+                    {/* Lo mismo pagado de tres formas: en bolívares, con USDT o en euros */}
                     <div className="rounded-2xl bg-white/15 py-2">
-                        <p className="text-[10px] uppercase opacity-80">BCV</p>
+                        <p className="text-[10px] uppercase opacity-80">Bolívares</p>
                         <p className="text-sm font-bold tabular-nums">{formatBs(total.bcv)}</p>
                     </div>
                     <div className="rounded-2xl bg-white/15 py-2">
-                        <p className="text-[10px] uppercase opacity-80">USDT</p>
-                        <p className="text-sm font-bold tabular-nums">{formatBs(total.usdt)}</p>
+                        <p className="text-[10px] uppercase opacity-80">En USDT</p>
+                        <p className="text-sm font-bold tabular-nums">{formatUsdt(total.usdt)}</p>
                     </div>
                     <div className="rounded-2xl bg-white/15 py-2">
-                        <p className="text-[10px] uppercase opacity-80">Euro</p>
+                        <p className="text-[10px] uppercase opacity-80">En euros</p>
                         <p className="text-sm font-bold tabular-nums">{formatEur(total.eur)}</p>
                     </div>
                 </div>
@@ -387,7 +388,7 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                                     initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
                                     className="mt-1 px-1 text-xs text-default-500"
                                 >
-                                    = {formatBs(livePreview.bcv)} · {formatBs(livePreview.usdt)} (USDT) · {formatEur(livePreview.eur)}
+                                    = {formatBs(livePreview.bcv)} · {formatUsdt(livePreview.usdt)} · {formatEur(livePreview.eur)}
                                 </motion.p>
                             )}
                         </AnimatePresence>

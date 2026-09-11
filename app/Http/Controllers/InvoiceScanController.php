@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExchangeRate;
 use App\Models\ShoppingTrip;
 use App\Services\ExchangeRateService;
 use App\Services\ImageService;
@@ -85,8 +86,20 @@ class InvoiceScanController extends Controller
             return redirect()->route('market.index');
         }
 
-        $rate = $rates->latest();
         $trip = $this->draftTrip($draft);
+        $rate = $rates->latest();
+
+        // Sumándose a un mercado se convierte con la tasa de ese mercado: el
+        // mercado pasa sus dólares a bolívares con su propia tasa, y con otra
+        // los bolívares de esta factura dejarían de cuadrar con la foto.
+        if ($trip && $trip->rate_bcv_usd !== null) {
+            $rate = new ExchangeRate([
+                'bcv_usd' => $trip->rate_bcv_usd,
+                'parallel_usd' => $trip->rate_parallel_usd,
+                'bcv_eur' => $trip->rate_bcv_eur,
+                'fetched_at' => $trip->created_at,
+            ]);
+        }
 
         return Inertia::render('Market/Invoice', [
             'invoice' => $draft['data'],
