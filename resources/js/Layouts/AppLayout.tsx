@@ -2,7 +2,7 @@ import { ReactNode, useEffect, useRef, useState } from 'react';
 import { Link, usePage, router } from '@inertiajs/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import confetti from 'canvas-confetti';
-import { Home, UtensilsCrossed, ShoppingCart, Wallet, Target, Sparkles, CheckCircle2, XCircle } from 'lucide-react';
+import { Home, UtensilsCrossed, ShoppingCart, Wallet, Target, Sparkles, NotebookPen, CheckCircle2, XCircle } from 'lucide-react';
 import { accentScale, applyTheme, watchSystemTheme } from '@/lib/theme';
 import { PageProps } from '@/types';
 
@@ -23,6 +23,9 @@ const NAV = [
     { href: '/finanzas', label: 'Gastos', icon: Wallet, match: ['/finanzas'] },
     { href: '/dinero', label: 'Metas', icon: Target, match: ['/dinero'] },
     { href: '/hogar', label: 'Hogar', icon: Sparkles, match: ['/hogar'] },
+    // Herramientas: la entrada lleva al anotador, su única herramienta por
+    // ahora. "Herramientas" no cabe bajo el ícono en un iPhone.
+    { href: '/herramientas/notas', label: 'Notas', icon: NotebookPen, match: ['/herramientas'] },
 ];
 
 function fireConfetti(colors: string[]) {
@@ -138,6 +141,12 @@ export default function AppLayout({ children, title, subtitle, right, back, hide
                                     className={`relative z-10 transition-colors ${active ? 'text-primary' : 'text-default-400'}`}
                                     strokeWidth={active ? 2.4 : 2}
                                 />
+                                {/* Notas por montar en Monday: el recordatorio siempre a la vista */}
+                                {item.href === '/herramientas/notas' && props.notesPending > 0 && (
+                                    <span className="absolute left-1/2 top-1 z-20 ml-1.5 min-w-4 rounded-full bg-rose-500 px-1 text-center text-[9px] font-bold leading-4 text-white">
+                                        {props.notesPending > 9 ? '9+' : props.notesPending}
+                                    </span>
+                                )}
                                 <span
                                     className={`relative z-10 text-[9px] font-medium transition-colors ${active ? 'text-primary' : 'text-default-400'}`}
                                 >

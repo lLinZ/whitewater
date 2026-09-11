@@ -46,6 +46,8 @@ class HandleInertiaRequests extends Middleware
             'features' => [
                 'invoiceScan' => fn () => app(InvoiceScanner::class)->isConfigured(),
             ],
+            // Notas por montar en Monday: la barra lo recuerda con un número.
+            'notesPending' => fn () => $request->user()?->notes()->pending()->count() ?? 0,
             'notifications' => [
                 'vapidPublicKey' => config('services.webpush.public_key'),
                 'subscribed' => fn () => $request->user()

@@ -18,6 +18,10 @@ Schedule::command('routines:remind')
     ->dailyAt(config('services.webpush.reminder_time', '20:00'))
     ->withoutOverlapping();
 
+// Aviso de notas por montar en Monday: cada quien elige su hora en el anotador,
+// así que se mira cada minuto a quién le toca.
+Schedule::command('notes:remind')->everyMinute()->withoutOverlapping();
+
 // Latido: prueba de que algo llama a `schedule:run`. Sin esto, la única señal
 // de que el cron quedó bien sería el recordatorio de las 20:00, y habría que
 // esperar hasta la noche para saber si el despliegue funcionó.

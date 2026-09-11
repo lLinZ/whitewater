@@ -39,6 +39,15 @@ class ImageService
         return $this->save($file, 'receipts', fn ($image) => $this->fit($image, self::RECEIPT_MAX), 82);
     }
 
+    /**
+     * Foto de una nota del anotador: igual que un comprobante, pero en el
+     * disco privado, porque son datos de clientes.
+     */
+    public function noteImage(UploadedFile $file, string $folder): string
+    {
+        return $this->save($file, $folder, fn ($image) => $this->fit($image, self::RECEIPT_MAX), 82, 'local');
+    }
+
     /** Borra un archivo guardado antes; tolera el null y el ya-borrado. */
     public function delete(?string $path): void
     {
@@ -73,16 +82,16 @@ class ImageService
      *
      * @param  callable(\GdImage): \GdImage  $transform
      */
-    private function save(UploadedFile $file, string $folder, callable $transform, int $quality): string
+    private function save(UploadedFile $file, string $folder, callable $transform, int $quality, string $disk = 'public'): string
     {
         $jpeg = $this->process($file, $transform, $quality);
 
         if ($jpeg === null) {
-            return $file->store($folder, 'public');
+            return $file->store($folder, $disk);
         }
 
         $path = $folder.'/'.Str::uuid().'.jpg';
-        Storage::disk('public')->put($path, $jpeg);
+        Storage::disk($disk)->put($path, $jpeg);
 
         return $path;
     }

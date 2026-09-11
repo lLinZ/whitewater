@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ProfileUpdateRequest;
 use App\Models\Debt;
 use App\Models\Expense;
+use App\Models\Note;
+use App\Models\NoteAttachment;
 use App\Models\RoutineLog;
 use App\Models\SavingsContribution;
 use App\Models\User;
@@ -15,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -116,6 +119,8 @@ class ProfileController extends Controller
         $user = $request->user();
 
         $images->delete($user->avatar_path);
+        // La base borra sus notas en cascada; los archivos hay que borrarlos aquí.
+        Storage::disk(NoteAttachment::DISK)->deleteDirectory(Note::userFolder($user->id));
 
         Auth::logout();
 

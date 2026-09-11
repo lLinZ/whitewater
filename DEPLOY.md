@@ -246,6 +246,28 @@ cd /var/www/whitewater && git pull && composer install --no-dev --optimize-autol
 - Comprobar que una ruta nueva está viva: `php artisan route:list --path=tasas`.
 - Si falta el enlace de las fotos: `php artisan storage:link` (una sola vez).
 
+## Anotador (Herramientas → Notas)
+
+Las notas guardan fotos, garabatos, grabaciones de llamadas y PDF de hasta
+**20 MB por archivo**. PHP viene de fábrica con 2 MB, así que hay que subir el
+límite una vez (cambia `8.3` por tu versión de PHP: `php -v`):
+
+```bash
+sudo sed -i 's/^upload_max_filesize.*/upload_max_filesize = 20M/; s/^post_max_size.*/post_max_size = 25M/' /etc/php/8.3/fpm/php.ini
+sudo systemctl restart php8.3-fpm
+```
+
+Y en Nginx, `client_max_body_size 25M;` en el `server` de la app (paso 7), luego
+`sudo nginx -t && sudo systemctl reload nginx`. Sin esto, un audio largo falla
+con "El archivo es demasiado grande para el servidor".
+
+- Los archivos de las notas viven en `storage/app/private/notes/` y **no** son
+  públicos: solo los entrega la app, y solo a quien escribió la nota. Inclúyelo
+  en las copias de seguridad.
+- El aviso de "notas por montar en Monday" lo manda `notes:remind`, que el
+  scheduler corre cada minuto; cada quien elige su hora en la app. Para probarlo
+  sin esperar: `php artisan notes:remind --now`.
+
 ## Notas de esta versión
 
 Comprobación rápida del `.env` de producción antes de nada:

@@ -36,6 +36,30 @@ export interface ExpenseCategory {
     expenses_count?: number;
 }
 
+/** Un archivo de una nota del anotador. Solo lo puede abrir quien la escribió. */
+export interface NoteAttachment {
+    id: number;
+    note_id: number;
+    name: string;
+    mime: string;
+    size: number;
+    kind: 'image' | 'audio' | 'video' | 'file';
+    url: string;
+    created_at: string;
+}
+
+/** Una nota del anotador de Herramientas. */
+export interface Note {
+    id: number;
+    client: string | null;
+    body: string | null;
+    tags: string[] | null;
+    /** Cuándo se montó en Monday; null = pendiente. */
+    monday_at: string | null;
+    created_at: string;
+    attachments: NoteAttachment[];
+}
+
 /** Moneda en que se pagó algo. USD es el dólar BCV, la base de la app. */
 export type Currency = 'USD' | 'VES' | 'USDT' | 'EUR';
 
@@ -257,6 +281,8 @@ export type PageProps<
         celebrate?: string | null;
     };
     rates: Rates | null;
+    /** Notas del anotador que faltan por montar en Monday. */
+    notesPending: number;
     notifications: {
         vapidPublicKey: string | null;
         subscribed: boolean;

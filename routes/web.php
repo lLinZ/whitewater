@@ -8,6 +8,7 @@ use App\Http\Controllers\FinanceController;
 use App\Http\Controllers\DebtController;
 use App\Http\Controllers\SavingsController;
 use App\Http\Controllers\RoutineController;
+use App\Http\Controllers\NoteController;
 use App\Http\Controllers\RatesController;
 use App\Http\Controllers\InvoiceScanController;
 use App\Http\Controllers\MarketController;
@@ -75,6 +76,20 @@ Route::middleware(['auth'])->group(function () {
     Route::delete('/dinero/metas/{goal}', [SavingsController::class, 'destroyGoal'])->name('savings.destroy');
 
     // --- Tasas de cambio ---
+    // Herramientas: por ahora, el anotador de clientes.
+    Route::redirect('/herramientas', '/herramientas/notas');
+    Route::get('/herramientas/notas', [NoteController::class, 'index'])->name('tools.notes.index');
+    Route::post('/herramientas/notas', [NoteController::class, 'store'])->name('tools.notes.store');
+    Route::get('/herramientas/notas/monday', [NoteController::class, 'monday'])->name('tools.notes.monday');
+    Route::post('/herramientas/notas/monday', [NoteController::class, 'markAllInMonday'])->name('tools.notes.monday.all');
+    Route::patch('/herramientas/notas/recordatorio', [NoteController::class, 'reminder'])->name('tools.notes.reminder');
+    Route::get('/herramientas/notas/archivos/{attachment}', [NoteController::class, 'showFile'])->name('tools.notes.files.show');
+    Route::delete('/herramientas/notas/archivos/{attachment}', [NoteController::class, 'destroyFile'])->name('tools.notes.files.destroy');
+    Route::patch('/herramientas/notas/{note}', [NoteController::class, 'update'])->whereNumber('note')->name('tools.notes.update');
+    Route::delete('/herramientas/notas/{note}', [NoteController::class, 'destroy'])->whereNumber('note')->name('tools.notes.destroy');
+    Route::patch('/herramientas/notas/{note}/monday', [NoteController::class, 'toggleMonday'])->whereNumber('note')->name('tools.notes.monday.toggle');
+    Route::post('/herramientas/notas/{note}/archivos', [NoteController::class, 'storeFile'])->whereNumber('note')->name('tools.notes.files.store');
+
     Route::post('/tasas/refrescar', [RatesController::class, 'refresh'])->name('rates.refresh');
     Route::get('/tasas/dia', [RatesController::class, 'day'])->name('rates.day');
 

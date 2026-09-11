@@ -26,6 +26,12 @@ class User extends Authenticatable
         'avatar_path',
         'color',
         'theme',
+        'notes_reminder_at',
+    ];
+
+    /** Lo mismo que el default de la columna, para un usuario recién creado. */
+    protected $attributes = [
+        'notes_reminder_at' => '18:00',
     ];
 
     /**
@@ -62,5 +68,11 @@ class User extends Authenticatable
     public function pushSubscriptions()
     {
         return $this->hasMany(PushSubscription::class);
+    }
+
+    /** Sus notas del anotador; nadie más las ve. */
+    public function notes()
+    {
+        return $this->hasMany(Note::class);
     }
 }
