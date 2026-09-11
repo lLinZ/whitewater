@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\ExchangeRate;
+use App\Models\Expense;
 use App\Models\ShoppingTrip;
 use App\Models\User;
 use App\Services\InvoiceScanner;
@@ -130,8 +131,13 @@ test('confirmar crea la compra con sus productos en dólares', function () {
     expect($trip->store)->toBe('Kosmos');
     expect($trip->items)->toHaveCount(2);
     expect($trip->total_usd)->toBe(6.0); // 1.80*2 + 2.40
-    expect($trip->receipt_path)->not->toBeNull();
-    Storage::disk('public')->assertExists($trip->receipt_path);
+
+    $receipt = $trip->receipts()->sole();
+    expect($receipt->store)->toBe('Kosmos');
+    expect($receipt->date->toDateString())->toBe('2026-08-28');
+    Storage::disk('public')->assertExists($receipt->receipt_path);
+    // Cada producto sabe de qué factura salió.
+    expect($trip->items->pluck('shopping_receipt_id')->unique()->all())->toBe([$receipt->id]);
 });
 
 test('la foto deja de estar en el borrador una vez creada la compra', function () {
@@ -143,7 +149,7 @@ test('la foto deja de estar en el borrador una vez creada la compra', function (
     ])->assertRedirect()->assertSessionMissing('invoice_draft');
 
     // La foto sobrevive: ahora pertenece a la compra, no al borrador.
-    Storage::disk('public')->assertExists(ShoppingTrip::first()->receipt_path);
+    Storage::disk('public')->assertExists(ShoppingTrip::first()->receipts()->sole()->receipt_path);
 });
 
 test('descartar el borrador borra también su foto', function () {
@@ -179,10 +185,13 @@ test('una compra escaneada le pasa su factura al gasto', function () {
 
     $expense = $trip->fresh()->expense;
     expect($expense)->not->toBeNull();
+    // Con una sola factura sigue siendo un solo gasto, con el nombre del mercado.
+    expect(Expense::count())->toBe(1);
+    expect($expense->description)->toBe($trip->name);
     expect($expense->receipt_path)->not->toBeNull();
     // Copia, no el mismo archivo: borrar la compra no puede dejar el gasto
     // sin comprobante.
-    expect($expense->receipt_path)->not->toBe($trip->receipt_path);
+    expect($expense->receipt_path)->not->toBe($trip->receipts()->sole()->receipt_path);
     Storage::disk('public')->assertExists($expense->receipt_path);
 });
 
@@ -194,13 +203,219 @@ test('borrar la compra deja intacto el comprobante del gasto', function () {
     ]);
 
     $trip = ShoppingTrip::first();
+    $tripReceipt = $trip->receipts()->sole()->receipt_path;
     actingAs($this->user)->post("/mercado/{$trip->id}/terminar", ['as_expense' => true]);
     $expenseReceipt = $trip->fresh()->expense->receipt_path;
 
     actingAs($this->user)->delete("/mercado/{$trip->id}");
 
-    Storage::disk('public')->assertMissing($trip->receipt_path);
+    Storage::disk('public')->assertMissing($tripReceipt);
     Storage::disk('public')->assertExists($expenseReceipt);
+});
+
+// --- Varias facturas en un mercado ----------------------------------------
+
+/** Escanea y confirma una factura; con $trip se suma a ese mercado. */
+function addInvoice(User $user, ?ShoppingTrip $trip, string $store, array $items)
+{
+    fakeScanner(scannedInvoice(['store' => $store]));
+
+    actingAs($user)->post('/mercado/escanear', array_filter([
+        'invoice' => UploadedFile::fake()->image('f.jpg'),
+        'trip' => $trip?->id,
+    ]));
+
+    return actingAs($user)->post('/mercado/factura', [
+        'store' => $store,
+        'date' => '2026-09-10',
+        'items' => $items,
+    ]);
+}
+
+/** Un mercado con dos facturas: Luxor ($3) y Central ($7.40). */
+function tripWithTwoInvoices(User $user): ShoppingTrip
+{
+    addInvoice($user, null, 'Luxor', [['name' => 'Harina', 'quantity' => 2, 'unit_price_usd' => 1.5]]);
+    $trip = ShoppingTrip::first();
+
+    addInvoice($user, $trip, 'Central', [
+        ['name' => 'Leche', 'quantity' => 1, 'unit_price_usd' => 2.4],
+        ['name' => 'Queso', 'quantity' => 1, 'unit_price_usd' => 5],
+    ]);
+
+    return $trip->fresh();
+}
+
+test('una segunda factura se suma al mismo mercado', function () {
+    $trip = tripWithTwoInvoices($this->user);
+
+    expect(ShoppingTrip::count())->toBe(1);
+    expect($trip->receipts->pluck('store')->all())->toBe(['Luxor', 'Central']);
+    expect($trip->items)->toHaveCount(3);
+    expect($trip->total_usd)->toBe(10.4);
+    expect($trip->receipts[1]->items()->count())->toBe(2);
+});
+
+test('confirmar una factura añadida vuelve a ese mercado', function () {
+    addInvoice($this->user, null, 'Luxor', [['name' => 'Harina', 'quantity' => 1, 'unit_price_usd' => 1]]);
+    $trip = ShoppingTrip::first();
+
+    addInvoice($this->user, $trip, 'Central', [['name' => 'Leche', 'quantity' => 1, 'unit_price_usd' => 2]])
+        ->assertRedirect("/mercado/{$trip->id}")
+        ->assertSessionHas('success', fn ($msg) => str_contains($msg, 'Central'));
+});
+
+test('la revisión avisa a qué mercado se suma la factura', function () {
+    addInvoice($this->user, null, 'Luxor', [['name' => 'Harina', 'quantity' => 1, 'unit_price_usd' => 1]]);
+    $trip = ShoppingTrip::first();
+
+    fakeScanner();
+    actingAs($this->user)->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg'), 'trip' => $trip->id]);
+
+    actingAs($this->user)->get('/mercado/factura')
+        ->assertInertia(fn (Assert $p) => $p
+            ->where('trip.id', $trip->id)
+            ->where('trip.item_count', 1)
+        );
+});
+
+test('una factura suelta no dice que se suma a ningún mercado', function () {
+    fakeScanner();
+    actingAs($this->user)->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg')]);
+
+    actingAs($this->user)->get('/mercado/factura')
+        ->assertInertia(fn (Assert $p) => $p->where('trip', null));
+});
+
+test('no se escanea hacia un mercado terminado, y se corta antes de leer', function () {
+    $trip = ShoppingTrip::create(['name' => 'Viejo', 'status' => 'done', 'created_by' => $this->user->id]);
+
+    $scanner = Mockery::mock(InvoiceScanner::class);
+    $scanner->shouldReceive('isConfigured')->andReturn(true);
+    $scanner->shouldNotReceive('scan');
+    app()->instance(InvoiceScanner::class, $scanner);
+
+    actingAs($this->user)
+        ->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg'), 'trip' => $trip->id])
+        ->assertSessionHas('error')
+        ->assertSessionMissing('invoice_draft');
+});
+
+test('si el mercado se terminó mientras se revisaba, la factura crea uno nuevo', function () {
+    addInvoice($this->user, null, 'Luxor', [['name' => 'Harina', 'quantity' => 1, 'unit_price_usd' => 1]]);
+    $trip = ShoppingTrip::first();
+
+    fakeScanner();
+    actingAs($this->user)->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg'), 'trip' => $trip->id]);
+    $trip->update(['status' => 'done']);
+
+    actingAs($this->user)->post('/mercado/factura', [
+        'items' => [['name' => 'Leche', 'quantity' => 1, 'unit_price_usd' => 2]],
+    ]);
+
+    // La factura no se pierde ni se cuela en un mercado ya cerrado.
+    expect(ShoppingTrip::count())->toBe(2);
+    expect($trip->items()->count())->toBe(1);
+});
+
+test('descartar una factura añadida vuelve al mercado', function () {
+    addInvoice($this->user, null, 'Luxor', [['name' => 'Harina', 'quantity' => 1, 'unit_price_usd' => 1]]);
+    $trip = ShoppingTrip::first();
+
+    fakeScanner();
+    actingAs($this->user)->post('/mercado/escanear', ['invoice' => UploadedFile::fake()->image('f.jpg'), 'trip' => $trip->id]);
+
+    actingAs($this->user)->delete('/mercado/factura')->assertRedirect("/mercado/{$trip->id}");
+});
+
+test('el mercado muestra sus facturas con la foto', function () {
+    $trip = tripWithTwoInvoices($this->user);
+
+    actingAs($this->user)->get("/mercado/{$trip->id}")
+        ->assertInertia(fn (Assert $p) => $p
+            ->has('trip.receipts', 2)
+            ->where('trip.receipts.0.url', fn ($url) => str_contains((string) $url, '/storage/'))
+            ->where('trip.receipts.0.store', 'Luxor')
+            ->where('trip.receipts.1.store', 'Central')
+            ->where('trip.receipts.1.item_count', 2)
+            ->where('trip.receipts.1.total_usd', 7.4)
+            ->where('trip.items.0.receipt_id', $trip->receipts[1]->id)
+        );
+});
+
+test('la lista de mercados sabe cuántas facturas tiene cada uno', function () {
+    tripWithTwoInvoices($this->user);
+
+    actingAs($this->user)->get('/mercado')
+        ->assertInertia(fn (Assert $p) => $p->has('trips.0.receipts', 2));
+});
+
+test('terminar con dos facturas registra un gasto por factura, cada uno con su foto', function () {
+    $trip = tripWithTwoInvoices($this->user);
+    // Y algo anotado a mano, sin factura.
+    actingAs($this->user)->post("/mercado/{$trip->id}/item", ['name' => 'Pan', 'quantity' => 1, 'unit_price_usd' => 1]);
+
+    actingAs($this->user)->post("/mercado/{$trip->id}/terminar", ['as_expense' => true]);
+
+    $expenses = Expense::orderBy('id')->get();
+    expect($expenses->map(fn ($e) => (float) $e->amount)->all())->toBe([3.0, 7.4, 1.0]);
+    expect($expenses->pluck('description')->all())->toBe([
+        "{$trip->name} · Luxor",
+        "{$trip->name} · Central",
+        "{$trip->name} · Anotado a mano",
+    ]);
+    // La fecha de cada gasto es la de su factura.
+    expect($expenses[0]->date->toDateString())->toBe('2026-09-10');
+
+    // Cada gasto con su propia copia; lo anotado a mano no tiene foto.
+    expect($expenses[0]->receipt_path)->not->toBeNull()->not->toBe($expenses[1]->receipt_path);
+    Storage::disk('public')->assertExists($expenses[0]->receipt_path);
+    Storage::disk('public')->assertExists($expenses[1]->receipt_path);
+    expect($expenses[2]->receipt_path)->toBeNull();
+
+    expect($trip->fresh()->expense_id)->toBe($expenses[0]->id);
+});
+
+test('terminar dos veces no duplica los gastos', function () {
+    $trip = tripWithTwoInvoices($this->user);
+
+    actingAs($this->user)->post("/mercado/{$trip->id}/terminar", ['as_expense' => true]);
+    actingAs($this->user)->post("/mercado/{$trip->id}/terminar", ['as_expense' => true]);
+
+    expect(Expense::count())->toBe(2);
+});
+
+test('quitar una factura se lleva sus productos y su foto, y deja las demás', function () {
+    $trip = tripWithTwoInvoices($this->user);
+    [$luxor, $central] = $trip->receipts->all();
+
+    actingAs($this->user)->delete("/mercado/{$trip->id}/factura/{$central->id}")
+        ->assertSessionHas('success', fn ($msg) => str_contains($msg, '2 productos'));
+
+    expect($trip->receipts()->pluck('id')->all())->toBe([$luxor->id]);
+    expect($trip->items()->pluck('name')->all())->toBe(['Harina']);
+    Storage::disk('public')->assertMissing($central->receipt_path);
+    Storage::disk('public')->assertExists($luxor->receipt_path);
+});
+
+test('no se puede quitar la factura de otro mercado', function () {
+    $trip = tripWithTwoInvoices($this->user);
+    $other = ShoppingTrip::create(['name' => 'Otro', 'status' => 'active', 'created_by' => $this->user->id]);
+
+    actingAs($this->user)
+        ->delete("/mercado/{$other->id}/factura/{$trip->receipts[0]->id}")
+        ->assertNotFound();
+
+    expect($trip->receipts()->count())->toBe(2);
+});
+
+test('borrar el mercado borra las fotos de todas sus facturas', function () {
+    $trip = tripWithTwoInvoices($this->user);
+    $paths = $trip->receipts->pluck('receipt_path');
+
+    actingAs($this->user)->delete("/mercado/{$trip->id}");
+
+    $paths->each(fn ($path) => Storage::disk('public')->assertMissing($path));
 });
 
 test('confirmar exige al menos un producto', function () {

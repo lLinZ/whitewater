@@ -37,6 +37,8 @@ interface Props {
     invoice: Invoice;
     receiptUrl: string;
     rates: Rates;
+    /** Mercado en curso al que se suma la factura; null si crea uno nuevo. */
+    trip: { id: number; name: string; item_count: number; total_usd: number } | null;
 }
 
 /** Fila editable: los precios se guardan como texto hasta el envío. */
@@ -58,7 +60,7 @@ const CONFIDENCE: Record<Invoice['confidence'], { label: string; tone: string }>
     baja: { label: 'Lectura dudosa: revísalo todo', tone: 'text-rose-600 dark:text-rose-400' },
 };
 
-export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
+export default function MarketInvoice({ invoice, receiptUrl, rates, trip }: Props) {
     const user = usePage<PageProps>().props.auth.user;
     const inBolivares = invoice.currency === 'VES';
 
@@ -189,7 +191,11 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
     const confidence = CONFIDENCE[invoice.confidence];
 
     return (
-        <AppLayout title="Factura escaneada" subtitle="Revisa antes de guardar" back="/mercado">
+        <AppLayout
+            title="Factura escaneada"
+            subtitle={trip ? `Se suma a «${trip.name}»` : 'Revisa antes de guardar'}
+            back={trip ? `/mercado/${trip.id}` : '/mercado'}
+        >
             <Head title="Factura escaneada" />
 
             {/* Lo leído, junto a la foto para poder contrastar */}
@@ -216,10 +222,13 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
             )}
 
             {/* Datos de la compra */}
-            <SectionHeader title="La compra" />
+            {/* Sumándose a un mercado, el nombre ya lo tiene el mercado */}
+            <SectionHeader title={trip ? 'La factura' : 'La compra'} />
             <Card className="flex flex-col gap-3">
-                <Input label="Nombre" placeholder={`Mercado ${date.slice(8, 10)}/${date.slice(5, 7)}`}
-                    value={name} onValueChange={setName} />
+                {!trip && (
+                    <Input label="Nombre" placeholder={`Mercado ${date.slice(8, 10)}/${date.slice(5, 7)}`}
+                        value={name} onValueChange={setName} />
+                )}
                 <Input label="Comercio" value={store} onValueChange={setStore} />
                 <Input type="date" label="Fecha" value={date} onValueChange={setDate} />
             </Card>
@@ -288,12 +297,18 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
 
             {/* Totales */}
             <Card className={`mt-3 bg-gradient-to-br text-white ${accent(user.color).gradient}`}>
-                <p className="text-xs opacity-90">Total de la compra</p>
+                <p className="text-xs opacity-90">{trip ? 'Total de esta factura' : 'Total de la compra'}</p>
                 <p className="mt-1 text-3xl font-bold">{formatMoney(totalUsd)}</p>
                 {inBolivares && (
                     <p className="mt-0.5 text-xs opacity-80">
                         {formatBs(totalOriginal)} a {rateKey === 'bcv' ? 'tasa BCV' : 'paralelo'}
                         {hasTax && (includeTax ? ' · IVA incluido' : ' · sin IVA')}
+                    </p>
+                )}
+                {trip && (
+                    <p className="mt-2 rounded-2xl bg-white/15 px-3 py-2 text-xs">
+                        {trip.name} ya lleva {formatMoney(trip.total_usd)} en {trip.item_count} productos:
+                        quedará en <b>{formatMoney(trip.total_usd + totalUsd)}</b>.
                     </p>
                 )}
             </Card>
@@ -369,7 +384,7 @@ export default function MarketInvoice({ invoice, receiptUrl, rates }: Props) {
                     isDisabled={!usable || missingRate}
                     onPress={confirmScan}
                 >
-                    Crear la compra
+                    {trip ? 'Añadir al mercado' : 'Crear la compra'}
                 </Button>
                 <Button fullWidth variant="light" radius="full" color="danger" onPress={discard}>
                     Descartar factura

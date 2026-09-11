@@ -91,6 +91,7 @@ Route::middleware(['auth'])->group(function () {
     Route::patch('/mercado/{trip}/item/{item}', [MarketController::class, 'updateItem'])->name('market.items.update');
     Route::delete('/mercado/{trip}/item/{item}', [MarketController::class, 'deleteItem'])->name('market.items.delete');
     Route::post('/mercado/{trip}/terminar', [MarketController::class, 'finish'])->name('market.finish');
+    Route::delete('/mercado/{trip}/factura/{receipt}', [MarketController::class, 'destroyReceipt'])->name('market.receipts.destroy');
     Route::delete('/mercado/{trip}', [MarketController::class, 'destroy'])->name('market.destroy');
 
     // --- Notificaciones push ---

@@ -25,14 +25,31 @@ class InvoiceScanController extends Controller
     /** Dónde vive el borrador entre el escaneo y la confirmación. */
     private const DRAFT = 'invoice_draft';
 
-    /** Lee la foto y deja el borrador listo para revisar. */
+    /**
+     * Lee la foto y deja el borrador listo para revisar.
+     *
+     * Con `trip`, la factura se suma a un mercado que ya está en curso: una
+     * misma salida de compras puede pasar por varios supermercados.
+     */
     public function scan(Request $request, ImageService $images, InvoiceScanner $scanner)
     {
         abort_unless($scanner->isConfigured(), 404);
 
         $request->validate([
             'invoice' => ['required', 'image', 'mimes:jpeg,jpg,png,webp,heic', 'max:8192'],
+            'trip' => ['nullable', 'integer'],
         ]);
+
+        $trip = null;
+
+        if ($request->filled('trip')) {
+            $trip = ShoppingTrip::find($request->integer('trip'));
+
+            // Se comprueba antes de leer: la lectura gasta cuota.
+            if (! $trip || $trip->status !== 'active') {
+                return back()->with('error', 'Ese mercado ya está terminado. Escanea la factura como un mercado nuevo.');
+            }
+        }
 
         // Se reduce antes de mandarla: una foto de iPhone de 4 MB no aporta
         // nada frente a una de 1600px, y se paga por píxel.
@@ -53,6 +70,7 @@ class InvoiceScanController extends Controller
         $request->session()->put(self::DRAFT, [
             'data' => $data,
             'receipt_path' => $path,
+            'trip_id' => $trip?->id,
         ]);
 
         return redirect()->route('market.invoice.review');
@@ -68,10 +86,18 @@ class InvoiceScanController extends Controller
         }
 
         $rate = $rates->latest();
+        $trip = $this->draftTrip($draft);
 
         return Inertia::render('Market/Invoice', [
             'invoice' => $draft['data'],
             'receiptUrl' => Storage::disk('public')->url($draft['receipt_path']),
+            // El mercado al que se suma, o null si la factura crea uno nuevo.
+            'trip' => $trip ? [
+                'id' => $trip->id,
+                'name' => $trip->name,
+                'item_count' => $trip->item_count,
+                'total_usd' => $trip->total_usd,
+            ] : null,
             'rates' => [
                 'bcv_usd' => $rate?->bcv_usd !== null ? (float) $rate->bcv_usd : null,
                 'parallel_usd' => $rate?->parallel_usd !== null ? (float) $rate->parallel_usd : null,
@@ -81,7 +107,7 @@ class InvoiceScanController extends Controller
         ]);
     }
 
-    /** Crea la compra con lo que quedó en la revisión. */
+    /** Crea la compra (o completa la que estaba en curso) con lo revisado. */
     public function confirm(Request $request, ExchangeRateService $rates)
     {
         $draft = $request->session()->get(self::DRAFT);
@@ -103,23 +129,35 @@ class InvoiceScanController extends Controller
             'items.*.unit_price_usd' => 'required|numeric|min:0',
         ]);
 
-        $rate = $rates->latest();
         $date = ! empty($data['date']) ? Carbon::parse($data['date']) : now();
+        $store = $this->blankToNull($data['store'] ?? null);
+        $trip = $this->draftTrip($draft);
+        $adding = $trip !== null;
 
-        $trip = ShoppingTrip::create([
-            'name' => ($data['name'] ?? null) ?: 'Mercado '.$date->format('d/m'),
-            'store' => $data['store'] ?? null,
-            'status' => 'active',
-            'rate_bcv_usd' => $rate?->bcv_usd,
-            'rate_parallel_usd' => $rate?->parallel_usd,
-            'rate_bcv_eur' => $rate?->bcv_eur,
+        if (! $trip) {
+            $rate = $rates->latest();
+
+            $trip = ShoppingTrip::create([
+                'name' => ($data['name'] ?? null) ?: 'Mercado '.$date->format('d/m'),
+                'store' => $store,
+                'status' => 'active',
+                'rate_bcv_usd' => $rate?->bcv_usd,
+                'rate_parallel_usd' => $rate?->parallel_usd,
+                'rate_bcv_eur' => $rate?->bcv_eur,
+                'created_by' => $request->user()->id,
+                'created_at' => $date,
+            ]);
+        }
+
+        $receipt = $trip->receipts()->create([
             'receipt_path' => $draft['receipt_path'],
-            'created_by' => $request->user()->id,
-            'created_at' => $date,
+            'store' => $store,
+            'date' => $date->toDateString(),
         ]);
 
         foreach ($data['items'] as $item) {
             $trip->items()->create([
+                'shopping_receipt_id' => $receipt->id,
                 'name' => trim($item['name']),
                 'brand' => $this->blankToNull($item['brand'] ?? null),
                 'size' => $this->blankToNull($item['size'] ?? null),
@@ -128,20 +166,40 @@ class InvoiceScanController extends Controller
             ]);
         }
 
-        // El borrador ya es una compra: se suelta la sesión sin borrar la foto,
-        // que a partir de ahora pertenece a la compra.
+        // El borrador ya es una factura de la compra: se suelta la sesión sin
+        // borrar la foto, que a partir de ahora pertenece a la compra.
         $request->session()->forget(self::DRAFT);
 
-        return redirect()->route('market.show', $trip)
-            ->with('success', count($data['items']).' productos cargados desde la factura 🧾');
+        $count = count($data['items']);
+
+        return redirect()->route('market.show', $trip)->with('success', $adding
+            ? "{$count} productos".($store ? " de {$store}" : '').' añadidos al mercado 🧾'
+            : "{$count} productos cargados desde la factura 🧾");
     }
 
-    /** Tira el borrador y su foto. */
+    /** Tira el borrador y su foto, y vuelve de donde se escaneó. */
     public function discard(Request $request, ImageService $images)
     {
+        $trip = $this->draftTrip($request->session()->get(self::DRAFT));
+
         $this->discardDraft($request, $images);
 
-        return redirect()->route('market.index');
+        return $trip
+            ? redirect()->route('market.show', $trip)
+            : redirect()->route('market.index');
+    }
+
+    /**
+     * El mercado al que se suma el borrador, si sigue en curso.
+     *
+     * Si entretanto se terminó o se borró, la factura no se pierde: se
+     * revisa y se guarda como un mercado nuevo.
+     */
+    private function draftTrip(?array $draft): ?ShoppingTrip
+    {
+        $id = $draft['trip_id'] ?? null;
+
+        return $id ? ShoppingTrip::where('status', 'active')->find($id) : null;
     }
 
     private function discardDraft(Request $request, ImageService $images): void

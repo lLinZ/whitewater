@@ -205,6 +205,18 @@ export interface ShoppingItem {
     unit_price_usd: number | null;
     quantity: number;
     subtotal_usd: number;
+    /** Factura de la que salió; null si se anotó a mano. */
+    receipt_id?: number | null;
+}
+
+/** Una factura escaneada dentro de un mercado. */
+export interface ShoppingReceipt {
+    id: number;
+    url: string;
+    store: string | null;
+    date: string | null;
+    item_count: number;
+    total_usd: number;
 }
 
 export interface ShoppingTrip {
@@ -218,8 +230,8 @@ export interface ShoppingTrip {
     pending_price_count: number;
     rates: TripRates;
     has_expense: boolean;
-    /** Foto de la factura, si la compra nacio de un escaneo. */
-    receipt_url?: string | null;
+    /** Facturas escaneadas; puede haber varias si se compró en varios sitios. */
+    receipts: ShoppingReceipt[];
     items: ShoppingItem[];
 }
 

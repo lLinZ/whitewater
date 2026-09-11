@@ -20,6 +20,12 @@ class ShoppingItem extends Model
         return $this->belongsTo(ShoppingTrip::class, 'shopping_trip_id');
     }
 
+    /** La factura de la que salió, o null si se anotó a mano. */
+    public function receipt()
+    {
+        return $this->belongsTo(ShoppingReceipt::class, 'shopping_receipt_id');
+    }
+
     public function getSubtotalUsdAttribute(): float
     {
         return round((float) $this->unit_price_usd * (float) $this->quantity, 2);

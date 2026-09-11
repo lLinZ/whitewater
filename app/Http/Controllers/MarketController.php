@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ShoppingReceipt;
 use App\Models\ShoppingTrip;
 use App\Models\ShoppingItem;
 use App\Models\Expense;
@@ -9,7 +10,6 @@ use App\Models\ExpenseCategory;
 use App\Services\ExchangeRateService;
 use App\Services\ImageService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 
 class MarketController extends Controller
@@ -19,7 +19,7 @@ class MarketController extends Controller
         // No forzamos red aquí: mientras compras (posible mala señal) la página
         // debe abrir al instante con la última tasa guardada. El refresco
         // automático ocurre en el Inicio y con el botón "Actualizar".
-        $trips = ShoppingTrip::with(['items', 'creator:id,name,avatar_emoji,avatar_path,color'])
+        $trips = ShoppingTrip::with(['items', 'receipts', 'creator:id,name,avatar_emoji,avatar_path,color'])
             ->orderByDesc('created_at')
             ->get()
             ->map(fn ($t) => $this->shapeTrip($t));
@@ -54,7 +54,7 @@ class MarketController extends Controller
 
     public function show(ShoppingTrip $trip)
     {
-        $trip->load(['items', 'creator:id,name,avatar_emoji,avatar_path,color', 'expense']);
+        $trip->load(['items', 'receipts', 'creator:id,name,avatar_emoji,avatar_path,color', 'expense']);
 
         // Mercado anterior (para comparar), excluyendo el actual.
         $previous = ShoppingTrip::where('id', '!=', $trip->id)
@@ -176,27 +176,85 @@ class MarketController extends Controller
                 ['color' => '#7c3aed']
             );
 
-            $expense = Expense::create([
-                'amount' => $trip->total_usd,
-                'expense_category_id' => $category->id,
-                'description' => $trip->name,
-                'date' => now()->toDateString(),
-                'created_by' => $request->user()->id,
-                // Si la compra nació de una factura escaneada, el gasto se
-                // queda con su propia copia: cada registro es dueño de su
-                // archivo y borrar uno no debe dejar al otro sin comprobante.
-                'receipt_path' => $images->copy($trip->receipt_path),
-            ]);
+            $expenses = $this->createExpenses($trip, $category, $request->user()->id, $images);
 
-            $trip->update(['expense_id' => $expense->id]);
+            // Marca de "ya se registró": con varias facturas hay varios
+            // gastos, y basta con apuntar al primero para no duplicarlos.
+            $trip->update(['expense_id' => $expenses[0]->id]);
         }
 
         return redirect()->route('market.index')->with('celebrate', 'Mercado terminado 🛒');
     }
 
+    /**
+     * Un gasto por factura, más uno por lo anotado a mano.
+     *
+     * Comprar en dos supermercados son dos pagos, cada uno con su factura: en
+     * Finanzas deben verse separados y con su foto. Con una sola factura (o
+     * ninguna) sale un único gasto, igual que siempre.
+     *
+     * @return list<Expense>
+     */
+    private function createExpenses(ShoppingTrip $trip, ExpenseCategory $category, int $userId, ImageService $images): array
+    {
+        $trip->load(['items', 'receipts']);
+
+        $receiptIds = $trip->receipts->pluck('id')->all();
+        $groups = $trip->receipts->map(fn ($receipt) => [
+            'receipt' => $receipt,
+            'amount' => $this->sumItems($trip->items->where('shopping_receipt_id', $receipt->id)),
+        ]);
+        $groups->push([
+            'receipt' => null,
+            'amount' => $this->sumItems($trip->items->reject(
+                fn ($item) => in_array($item->shopping_receipt_id, $receiptIds)
+            )),
+        ]);
+
+        $groups = $groups->filter(fn ($group) => $group['amount'] > 0)->values();
+        $split = $groups->count() > 1;
+
+        return $groups->map(function ($group) use ($trip, $category, $userId, $images, $split) {
+            $receipt = $group['receipt'];
+
+            return Expense::create([
+                'amount' => $group['amount'],
+                'expense_category_id' => $category->id,
+                'description' => $split
+                    ? $trip->name.' · '.($receipt ? ($receipt->store ?: 'Factura') : 'Anotado a mano')
+                    : $trip->name,
+                // La fecha de la factura es cuándo salió el dinero.
+                'date' => $receipt?->date?->toDateString() ?? now()->toDateString(),
+                'created_by' => $userId,
+                // El gasto se queda con su propia copia de la factura: cada
+                // registro es dueño de su archivo y borrar uno no debe dejar
+                // al otro sin comprobante.
+                'receipt_path' => $images->copy($receipt?->receipt_path),
+            ]);
+        })->all();
+    }
+
+    private function sumItems($items): float
+    {
+        return round($items->sum(fn ($item) => (float) $item->unit_price_usd * (float) $item->quantity), 2);
+    }
+
+    /** Quita una factura escaneada por error, con sus productos. */
+    public function destroyReceipt(ShoppingTrip $trip, ShoppingReceipt $receipt, ImageService $images)
+    {
+        abort_unless($receipt->shopping_trip_id === $trip->id, 404);
+
+        $count = $receipt->items()->count();
+        $receipt->items()->delete();
+        $images->delete($receipt->receipt_path);
+        $receipt->delete();
+
+        return back(303)->with('success', "Factura quitada, con sus {$count} productos");
+    }
+
     public function destroy(ShoppingTrip $trip, ImageService $images)
     {
-        $images->delete($trip->receipt_path);
+        $trip->receipts->each(fn ($receipt) => $images->delete($receipt->receipt_path));
         $trip->delete();
 
         return redirect()->route('market.index')->with('success', 'Mercado eliminado');
@@ -219,9 +277,21 @@ class MarketController extends Controller
                 'bcv_eur' => $trip->rate_bcv_eur !== null ? (float) $trip->rate_bcv_eur : null,
             ],
             'has_expense' => (bool) $trip->expense_id,
-            'receipt_url' => $trip->receipt_path ? Storage::disk('public')->url($trip->receipt_path) : null,
+            'receipts' => $trip->receipts->map(fn ($r) => [
+                'id' => $r->id,
+                'url' => $r->receipt_url,
+                'store' => $r->store,
+                'date' => $r->date?->toDateString(),
+                'item_count' => $trip->relationLoaded('items')
+                    ? $trip->items->where('shopping_receipt_id', $r->id)->count()
+                    : 0,
+                'total_usd' => $trip->relationLoaded('items')
+                    ? $this->sumItems($trip->items->where('shopping_receipt_id', $r->id))
+                    : 0,
+            ])->values(),
             'items' => $trip->relationLoaded('items') ? $trip->items->map(fn ($i) => [
                 'id' => $i->id,
+                'receipt_id' => $i->shopping_receipt_id,
                 'name' => $i->name,
                 'brand' => $i->brand,
                 'size' => $i->size,

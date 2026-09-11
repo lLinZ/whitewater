@@ -1,34 +1,18 @@
-import { useRef, useState } from 'react';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
-import { Plus, ShoppingCart, ArrowUp, ArrowDown, Trash2, Receipt, ScanLine } from 'lucide-react';
+import { Plus, ShoppingCart, ArrowUp, ArrowDown, Trash2, Receipt, ScrollText } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
 import RatesCard from '@/Components/ui/RatesCard';
-import { Card, EmptyState, MemberBadge } from '@/Components/ui/primitives';
+import ScanInvoiceButton from '@/Components/ui/ScanInvoiceButton';
+import { Card, EmptyState } from '@/Components/ui/primitives';
 import { formatMoney, formatBs, formatDate, convertUsd } from '@/lib/format';
+import { accent } from '@/lib/accent';
 import { PageProps, ShoppingTrip } from '@/types';
 
 export default function MarketIndex({ trips }: { trips: ShoppingTrip[] }) {
-    const { rates, features } = usePage<PageProps>().props;
-    const invoiceInput = useRef<HTMLInputElement>(null);
-    const [scanning, setScanning] = useState(false);
+    const { rates, features, auth } = usePage<PageProps>().props;
 
     const startTrip = () => router.post('/mercado', {});
-
-    // La lectura tarda unos segundos: el estado de carga es lo único que
-    // separa "está pensando" de "no pasó nada".
-    const scanInvoice = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        setScanning(true);
-        router.post('/mercado/escanear', { invoice: file }, {
-            forceFormData: true,
-            onFinish: () => {
-                setScanning(false);
-                if (invoiceInput.current) invoiceInput.current.value = '';
-            },
-        });
-    };
 
     const del = (t: ShoppingTrip) => {
         if (confirm(`¿Eliminar "${t.name}"?`)) router.delete(`/mercado/${t.id}`, { preserveScroll: true });
@@ -42,32 +26,12 @@ export default function MarketIndex({ trips }: { trips: ShoppingTrip[] }) {
 
             <button
                 onClick={startTrip}
-                className="mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-gradient-to-br from-violet-500 to-purple-600 py-4 font-semibold text-white shadow-card active:scale-[0.99]"
+                className={`mt-3 flex w-full items-center justify-center gap-2 rounded-3xl bg-gradient-to-br py-4 font-semibold text-white shadow-card active:scale-[0.99] ${accent(auth.user.color).gradient}`}
             >
                 <Plus size={20} /> Empezar mercado
             </button>
 
-            {features?.invoiceScan && (
-                <>
-                    <input
-                        ref={invoiceInput} type="file" accept="image/*" className="hidden"
-                        onChange={scanInvoice}
-                    />
-                    <button
-                        onClick={() => invoiceInput.current?.click()}
-                        disabled={scanning}
-                        className="mt-2 flex w-full items-center justify-center gap-2 rounded-3xl border border-dashed border-divider py-3.5 text-sm font-semibold text-default-600 active:scale-[0.99] disabled:opacity-60"
-                    >
-                        <ScanLine size={18} className={scanning ? 'animate-pulse text-primary' : 'text-primary'} />
-                        {scanning ? 'Leyendo la factura…' : 'Escanear una factura'}
-                    </button>
-                    {scanning && (
-                        <p className="mt-1.5 text-center text-xs text-default-400">
-                            Puede tardar unos segundos. No cierres la app.
-                        </p>
-                    )}
-                </>
-            )}
+            {features?.invoiceScan && <ScanInvoiceButton label="Escanear una factura" className="mt-2" />}
 
             <div className="mt-4 flex flex-col gap-2">
                 {trips.length === 0 && (
@@ -91,6 +55,11 @@ export default function MarketIndex({ trips }: { trips: ShoppingTrip[] }) {
                                                 {formatDate(t.created_at)} · {t.item_count} {t.item_count === 1 ? 'producto' : 'productos'}
                                                 {t.status === 'active' && <span className="ml-1 text-emerald-500">· activo</span>}
                                                 {t.pending_price_count > 0 && <span className="ml-1 text-amber-500">· {t.pending_price_count} sin precio</span>}
+                                                {t.receipts.length > 0 && (
+                                                    <span className="ml-1 whitespace-nowrap">
+                                                        · <ScrollText size={11} className="inline" /> {t.receipts.length}
+                                                    </span>
+                                                )}
                                                 {t.has_expense && <Receipt size={11} className="ml-1 inline text-default-400" />}
                                             </p>
                                         </div>

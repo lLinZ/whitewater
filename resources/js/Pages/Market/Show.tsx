@@ -1,15 +1,18 @@
 import { FormEvent, useMemo, useRef, useState } from 'react';
-import { Head, router } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Button, Autocomplete, AutocompleteItem, useDisclosure, Modal, ModalContent, ModalHeader, ModalBody, ModalFooter, Switch,
 } from '@heroui/react';
 import { Plus, Trash2, ArrowUp, ArrowDown, Check, Pencil } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Card } from '@/Components/ui/primitives';
+import { Card, SectionHeader } from '@/Components/ui/primitives';
 import DecimalInput from '@/Components/ui/DecimalInput';
-import { formatMoney, formatBs, formatEur, convertUsd, fromNow, parseDecimal } from '@/lib/format';
-import { ShoppingTrip, ShoppingItem } from '@/types';
+import ReceiptViewer from '@/Components/ui/ReceiptViewer';
+import ScanInvoiceButton from '@/Components/ui/ScanInvoiceButton';
+import { formatMoney, formatBs, formatEur, formatDate, convertUsd, fromNow, parseDecimal } from '@/lib/format';
+import { accent } from '@/lib/accent';
+import { PageProps, ShoppingTrip, ShoppingItem, ShoppingReceipt } from '@/types';
 
 interface CatalogItem {
     name: string;
@@ -145,6 +148,7 @@ function ProductFields({
 }
 
 export default function MarketShow({ trip, previous, catalog }: Props) {
+    const { auth, features } = usePage<PageProps>().props;
     const [draft, setDraft] = useState<Draft>(EMPTY);
     const [editing, setEditing] = useState<ShoppingItem | null>(null);
     const [editDraft, setEditDraft] = useState<Draft>(EMPTY);
@@ -162,6 +166,35 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
         : null;
     const delta = previous ? trip.total_usd - previous.total_usd : null;
     const pending = trip.pending_price_count;
+
+    // Con más de una factura, cada producto dice de qué comercio salió.
+    const storeOf = useMemo(
+        () => new Map(trip.receipts.map((r) => [r.id, r.store ?? 'Factura'])),
+        [trip.receipts],
+    );
+    const multiStore = trip.receipts.length > 1;
+    const canScan = !!features?.invoiceScan && trip.status === 'active';
+
+    // Al terminar sale un gasto por factura (más uno por lo anotado a mano):
+    // se avisa antes para que en Finanzas no sorprenda ver varios.
+    const { expenseCount, manualExpense } = useMemo(() => {
+        const sums = new Map<number | 'manual', number>();
+        trip.items.forEach((it) => {
+            const key = it.receipt_id && storeOf.has(it.receipt_id) ? it.receipt_id : 'manual';
+            sums.set(key, (sums.get(key) ?? 0) + it.subtotal_usd);
+        });
+        return {
+            expenseCount: [...sums.values()].filter((sum) => sum > 0).length,
+            manualExpense: (sums.get('manual') ?? 0) > 0,
+        };
+    }, [trip.items, storeOf]);
+
+    const removeReceipt = (r: ShoppingReceipt) => {
+        const what = `${r.item_count} ${r.item_count === 1 ? 'producto' : 'productos'}`;
+        if (confirm(`¿Quitar la factura${r.store ? ` de ${r.store}` : ''}? Se borran también sus ${what}.`)) {
+            router.delete(`/mercado/${trip.id}/factura/${r.id}`, { preserveScroll: true });
+        }
+    };
 
     // Último precio conocido de este producto+marca+presentación exacto.
     const matched = draft.name.trim()
@@ -226,7 +259,7 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
             <Head title={trip.name} />
 
             {/* Total en vivo */}
-            <Card className="bg-gradient-to-br from-violet-500 to-purple-600 text-white">
+            <Card className={`bg-gradient-to-br text-white ${accent(auth.user.color).gradient}`}>
                 <p className="text-sm opacity-90">Total del mercado</p>
                 <p className="mt-1 text-4xl font-extrabold tracking-tight">{formatMoney(trip.total_usd)}</p>
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
@@ -256,6 +289,45 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                     </div>
                 )}
             </Card>
+
+            {/* Facturas: puede haber una por supermercado */}
+            {trip.receipts.length > 0 && (
+                <>
+                    <SectionHeader title={`Facturas (${trip.receipts.length})`} />
+                    <div className="flex flex-col gap-2">
+                        {trip.receipts.map((r) => (
+                            <Card key={r.id} className="flex items-center gap-3 !py-2.5">
+                                <ReceiptViewer
+                                    url={r.url} size={44}
+                                    alt={`Factura${r.store ? ` de ${r.store}` : ''}${r.date ? ` · ${formatDate(r.date)}` : ''}`}
+                                />
+                                <div className="min-w-0 flex-1">
+                                    <p className="truncate font-medium">{r.store ?? 'Factura'}</p>
+                                    <p className="truncate text-xs text-default-400">
+                                        {r.date ? `${formatDate(r.date)} · ` : ''}
+                                        {r.item_count} {r.item_count === 1 ? 'producto' : 'productos'} · toca la foto para verla
+                                    </p>
+                                </div>
+                                <span className="font-semibold tabular-nums">{formatMoney(r.total_usd)}</span>
+                                {trip.status === 'active' && (
+                                    <button
+                                        aria-label="Quitar factura" onClick={() => removeReceipt(r)}
+                                        className="shrink-0 text-default-300 active:text-rose-500"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                )}
+                            </Card>
+                        ))}
+                    </div>
+                </>
+            )}
+            {canScan && (
+                <ScanInvoiceButton
+                    tripId={trip.id} className="mt-2"
+                    label={trip.receipts.length > 0 ? 'Escanear otra factura' : 'Escanear la factura'}
+                />
+            )}
 
             {/* Agregar producto */}
             {trip.status === 'active' && (
@@ -321,6 +393,9 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                                     {it.size && <span className="ml-1.5 rounded-md bg-default-100 px-1.5 py-0.5 text-[11px] font-normal text-default-500">{it.size}</span>}
                                 </p>
                                 <p className="truncate text-xs text-default-400">
+                                    {multiStore && it.receipt_id && storeOf.has(it.receipt_id) && (
+                                        <span className="text-primary">{storeOf.get(it.receipt_id)} · </span>
+                                    )}
                                     {it.brand && <span className="text-default-500">{it.brand} · </span>}
                                     {noPrice
                                         ? <span className="text-amber-500">Sin precio · toca para agregarlo</span>
@@ -387,7 +462,13 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                         <div className="mt-2 flex items-center justify-between rounded-2xl bg-content2 px-3 py-3">
                             <div>
                                 <p className="text-sm font-medium">Guardar como gasto</p>
-                                <p className="text-xs text-default-400">Se registra en Finanzas (categoría Mercado)</p>
+                                <p className="text-xs text-default-400">
+                                    {expenseCount <= 1
+                                        ? 'Se registra en Finanzas (categoría Mercado)'
+                                        : manualExpense
+                                            ? `Se registran ${expenseCount} gastos en Finanzas: uno por factura, con su foto, y otro por lo anotado a mano`
+                                            : `Se registran ${expenseCount} gastos en Finanzas, uno por factura y con su foto`}
+                                </p>
                             </div>
                             <Switch isSelected={asExpense} onValueChange={setAsExpense} color="primary" />
                         </div>

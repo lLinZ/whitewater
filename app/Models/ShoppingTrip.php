@@ -21,6 +21,12 @@ class ShoppingTrip extends Model
         return $this->hasMany(ShoppingItem::class)->orderByDesc('id');
     }
 
+    /** Las facturas de la compra, en el orden en que se escanearon. */
+    public function receipts()
+    {
+        return $this->hasMany(ShoppingReceipt::class)->orderBy('id');
+    }
+
     public function creator()
     {
         return $this->belongsTo(User::class, 'created_by');
