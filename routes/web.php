@@ -76,6 +76,7 @@ Route::middleware(['auth'])->group(function () {
 
     // --- Tasas de cambio ---
     Route::post('/tasas/refrescar', [RatesController::class, 'refresh'])->name('rates.refresh');
+    Route::get('/tasas/dia', [RatesController::class, 'day'])->name('rates.day');
 
     // --- Mercado (compras) ---
     Route::get('/mercado', [MarketController::class, 'index'])->name('market.index');

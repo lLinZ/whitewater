@@ -51,4 +51,57 @@ class ExchangeRate extends Model
             $this->bcv_eur ? (float) $this->bcv_eur : null,
         );
     }
+
+    /** Monedas en las que se puede anotar un pago. USD es el dólar BCV, la base. */
+    public const CURRENCIES = ['USD', 'VES', 'USDT', 'EUR'];
+
+    /**
+     * Pasa a dólares BCV un monto pagado en otra moneda: el camino inverso de
+     * convert().
+     *
+     * Todo pasa por los bolívares: USDT a la tasa paralela y euros a la tasa
+     * BCV del euro. Así convert() devuelve exactamente lo que se pagó.
+     *
+     * @param  array{bcv_usd: ?float, parallel_usd: ?float, bcv_eur: ?float}  $rates
+     * @return float|null null si falta la tasa que hace falta
+     */
+    public static function toUsd(float $amount, string $currency, array $rates): ?float
+    {
+        if ($currency === 'USD') {
+            return $amount;
+        }
+
+        $bcvUsd = $rates['bcv_usd'] ?? null;
+        $parallelUsd = $rates['parallel_usd'] ?? null;
+        $bcvEur = $rates['bcv_eur'] ?? null;
+
+        $bolivares = match ($currency) {
+            'VES' => $amount,
+            'USDT' => $parallelUsd ? $amount * $parallelUsd : null,
+            'EUR' => $bcvEur ? $amount * $bcvEur : null,
+            default => null,
+        };
+
+        return ($bolivares !== null && $bcvUsd) ? $bolivares / $bcvUsd : null;
+    }
+
+    /**
+     * Las tres tasas con la forma que se congela en mercados y gastos.
+     *
+     * @return array{bcv_usd: ?float, parallel_usd: ?float, bcv_eur: ?float}
+     */
+    public function snapshot(): array
+    {
+        return [
+            'bcv_usd' => $this->bcv_usd !== null ? (float) $this->bcv_usd : null,
+            'parallel_usd' => $this->parallel_usd !== null ? (float) $this->parallel_usd : null,
+            'bcv_eur' => $this->bcv_eur !== null ? (float) $this->bcv_eur : null,
+        ];
+    }
+
+    /** El día en que rige: el que marca el BCV o, si no lo trae, el de la descarga. */
+    public function effectiveDate(): ?string
+    {
+        return $this->rate_date?->toDateString() ?? $this->fetched_at?->toDateString();
+    }
 }

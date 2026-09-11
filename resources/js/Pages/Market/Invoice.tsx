@@ -8,7 +8,7 @@ import DecimalInput from '@/Components/ui/DecimalInput';
 import ReceiptViewer from '@/Components/ui/ReceiptViewer';
 import { formatBs, formatMoney, formatUsdt, parseDecimal, today } from '@/lib/format';
 import { accent } from '@/lib/accent';
-import { PageProps, Rates } from '@/types';
+import { PageProps, RateSnapshot } from '@/types';
 
 interface ScannedItem {
     name: string;
@@ -36,7 +36,8 @@ interface Invoice {
 interface Props {
     invoice: Invoice;
     receiptUrl: string;
-    rates: Rates;
+    /** Con las que se convierte: las del mercado al que se suma, o las de hoy. */
+    rates: RateSnapshot | null;
     /** Mercado en curso al que se suma la factura; null si crea uno nuevo. */
     trip: { id: number; name: string; item_count: number; total_usd: number } | null;
 }

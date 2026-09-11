@@ -3,13 +3,18 @@
 namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\HandlesReceipts;
+use App\Models\ExchangeRate;
 use App\Models\Expense;
 use App\Models\ExpenseCategory;
 use App\Models\User;
+use App\Services\ExchangeRateService;
 use App\Services\ImageService;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Carbon;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 
 class FinanceController extends Controller
@@ -134,19 +139,20 @@ class FinanceController extends Controller
             ->when(($filters['receipts'] ?? null) === '1', fn (Builder $q) => $q->whereNotNull('receipt_path'));
     }
 
-    public function storeExpense(Request $request, ImageService $images)
+    public function storeExpense(Request $request, ImageService $images, ExchangeRateService $rates)
     {
-        $data = $request->validate([
-            'amount' => 'required|numeric|min:0.01',
-            'description' => 'required|string|max:255',
-            'expense_category_id' => 'nullable|exists:expense_categories,id',
-            'date' => 'required|date',
+        $data = $this->validateExpense($request);
+
+        $expense = new Expense([
+            ...Arr::only($data, ['description', 'expense_category_id', 'date']),
+            'created_by' => $request->user()->id,
         ]);
+        $this->applyAmount($expense, $data, $rates);
 
-        $data['created_by'] = $request->user()->id;
-        $data['receipt_path'] = $this->storeReceipt($request, $images);
-
-        Expense::create($data);
+        // La foto se guarda después de convertir: si falta la tasa, la
+        // validación corta antes y no queda un archivo huérfano.
+        $expense->receipt_path = $this->storeReceipt($request, $images);
+        $expense->save();
 
         return back()->with('success', 'Gasto registrado');
     }
@@ -157,18 +163,54 @@ class FinanceController extends Controller
      * El caso que más se usa es adjuntarle el comprobante a un gasto viejo:
      * la factura casi nunca está a mano en el momento de anotarlo.
      */
-    public function updateExpense(Request $request, Expense $expense, ImageService $images)
+    public function updateExpense(Request $request, Expense $expense, ImageService $images, ExchangeRateService $rates)
     {
-        $expense->update($request->validate([
-            'amount' => 'required|numeric|min:0.01',
-            'description' => 'required|string|max:255',
-            'expense_category_id' => 'nullable|exists:expense_categories,id',
-            'date' => 'required|date',
-        ]));
+        $data = $this->validateExpense($request);
+        $dateChanged = $expense->date?->toDateString() !== Carbon::parse($data['date'])->toDateString();
+
+        $expense->fill(Arr::only($data, ['description', 'expense_category_id', 'date']));
+        $this->applyAmount($expense, $data, $rates, refreshRates: $dateChanged);
+        $expense->save();
 
         $this->syncReceipt($request, $images, $expense);
 
         return back()->with('success', 'Gasto actualizado');
+    }
+
+    /**
+     * Pasa lo pagado a dólares BCV con la tasa del día del gasto, no la del
+     * día en que se anota.
+     *
+     * Al editar, la tasa solo se vuelve a buscar si cambió la fecha: corregir
+     * la descripción de un gasto en bolívares no debe moverle el monto porque
+     * entretanto llegó otra tasa de ese mismo día.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    private function applyAmount(Expense $expense, array $data, ExchangeRateService $rates, bool $refreshRates = true): void
+    {
+        if ($refreshRates || $expense->rate_bcv_usd === null) {
+            $expense->snapshotRates($rates->forDate($data['date'])?->snapshot());
+        }
+
+        if (! $expense->setPaid((float) $data['amount'], $data['currency'] ?? 'USD')) {
+            throw ValidationException::withMessages([
+                'amount' => 'No hay tasa guardada para convertir esa moneda. Anótalo en dólares o actualiza las tasas desde el Inicio.',
+            ]);
+        }
+    }
+
+    /** @return array<string, mixed> */
+    private function validateExpense(Request $request): array
+    {
+        return $request->validate([
+            // En la moneda en que se pagó; sin moneda, dólares.
+            'amount' => 'required|numeric|min:0.01',
+            'currency' => ['nullable', Rule::in(ExchangeRate::CURRENCIES)],
+            'description' => 'required|string|max:255',
+            'expense_category_id' => 'nullable|exists:expense_categories,id',
+            'date' => 'required|date',
+        ]);
     }
 
     public function destroyExpense(Expense $expense, ImageService $images)

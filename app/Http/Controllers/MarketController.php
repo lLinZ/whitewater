@@ -38,18 +38,14 @@ class MarketController extends Controller
             'store' => 'nullable|string|max:120',
         ]);
 
-        // Snapshot de la última tasa guardada (sin bloquear con una llamada de red).
-        $rate = $rates->latest();
-
-        $trip = ShoppingTrip::create([
+        $trip = new ShoppingTrip([
             'name' => ($data['name'] ?? null) ?: 'Mercado '.now()->format('d/m'),
             'store' => $data['store'] ?? null,
             'status' => 'active',
-            'rate_bcv_usd' => $rate?->bcv_usd,
-            'rate_parallel_usd' => $rate?->parallel_usd,
-            'rate_bcv_eur' => $rate?->bcv_eur,
             'created_by' => $request->user()->id,
         ]);
+        // Snapshot de la última tasa guardada (sin bloquear con una llamada de red).
+        $trip->snapshotRates($rates->latest()?->snapshot())->save();
 
         return redirect()->route('market.show', $trip);
     }
@@ -249,7 +245,7 @@ class MarketController extends Controller
                 $copies[] = $copy;
             }
 
-            return Expense::create([
+            $expense = new Expense([
                 'amount' => $group['amount'],
                 'expense_category_id' => $category->id,
                 'description' => $split
@@ -260,6 +256,13 @@ class MarketController extends Controller
                 'created_by' => $userId,
                 'receipt_path' => $copy,
             ]);
+
+            // Con las tasas del mercado y no con las del día de la factura:
+            // con ellas se pasaron sus bolívares a dólares, y con otras el
+            // gasto dejaría de mostrar los bolívares de la foto.
+            $expense->snapshotRates($trip->rates)->save();
+
+            return $expense;
         })->all();
     }
 
@@ -300,11 +303,7 @@ class MarketController extends Controller
             'total_usd' => $trip->total_usd,
             'item_count' => $trip->item_count,
             'pending_price_count' => $trip->pending_price_count,
-            'rates' => [
-                'bcv_usd' => $trip->rate_bcv_usd !== null ? (float) $trip->rate_bcv_usd : null,
-                'parallel_usd' => $trip->rate_parallel_usd !== null ? (float) $trip->rate_parallel_usd : null,
-                'bcv_eur' => $trip->rate_bcv_eur !== null ? (float) $trip->rate_bcv_eur : null,
-            ],
+            'rates' => $trip->rates,
             'has_expense' => (bool) $trip->expense_id,
             'receipts' => $trip->receipts->map(fn ($r) => [
                 'id' => $r->id,

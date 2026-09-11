@@ -4,13 +4,13 @@ import {
     BarChart, Bar, PieChart, Pie, Cell, ResponsiveContainer, XAxis, Tooltip,
 } from 'recharts';
 import { Button, useDisclosure } from '@heroui/react';
-import { Plus, Tags, Trash2 } from 'lucide-react';
+import { Plus, Tags } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Card, SectionHeader, StatTile, EmptyState, MemberBadge } from '@/Components/ui/primitives';
+import { Card, SectionHeader, StatTile, EmptyState } from '@/Components/ui/primitives';
 import CategoryManager from '@/Components/ui/CategoryManager';
 import ExpenseModal from '@/Components/ui/ExpenseModal';
-import ReceiptViewer from '@/Components/ui/ReceiptViewer';
-import { formatMoney, formatMoneyShort, formatDate } from '@/lib/format';
+import ExpenseRow from '@/Components/ui/ExpenseRow';
+import { formatMoney, formatMoneyShort } from '@/lib/format';
 import { chartColors } from '@/lib/accent';
 import { Expense, ExpenseCategory } from '@/types';
 
@@ -155,37 +155,3 @@ export default function FinanceIndex({ categories, expenses, expenseCount, stats
     );
 }
 
-/** Tocar la fila abre la edición; ahí es donde se le adjunta la factura. */
-function ExpenseRow({
-    expense, onEdit, onDelete,
-}: {
-    expense: Expense;
-    onEdit: (expense: Expense) => void;
-    onDelete: (expense: Expense) => void;
-}) {
-    return (
-        <div className="flex items-center gap-3 px-4 py-3">
-            {expense.receipt_url ? (
-                <ReceiptViewer url={expense.receipt_url} alt={expense.description} size={36} />
-            ) : (
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-content2 text-sm">
-                    {expense.category?.name?.[0] ?? '·'}
-                </div>
-            )}
-            <button onClick={() => onEdit(expense)} className="min-w-0 flex-1 text-left active:opacity-60">
-                <p className="truncate text-sm font-medium">{expense.description}</p>
-                <p className="text-xs text-default-400">
-                    {expense.category?.name ?? 'Sin categoría'} · {formatDate(expense.date)}
-                    {!expense.receipt_url && ' · sin comprobante'}
-                </p>
-            </button>
-            <MemberBadge member={expense.creator} size={22} />
-            <button onClick={() => onEdit(expense)} className="shrink-0 font-semibold active:opacity-60">
-                {formatMoney(expense.amount)}
-            </button>
-            <button onClick={() => onDelete(expense)} aria-label="Eliminar gasto" className="shrink-0 text-default-300 active:text-rose-500">
-                <Trash2 size={16} />
-            </button>
-        </div>
-    );
-}

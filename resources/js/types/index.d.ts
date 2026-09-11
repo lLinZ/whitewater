@@ -36,9 +36,18 @@ export interface ExpenseCategory {
     expenses_count?: number;
 }
 
+/** Moneda en que se pagó algo. USD es el dólar BCV, la base de la app. */
+export type Currency = 'USD' | 'VES' | 'USDT' | 'EUR';
+
 export interface Expense {
     id: number;
+    /** En dólares BCV: lo que suman totales y gráficos. */
     amount: string;
+    /** Cómo se pagó: `original_amount` en `currency`. */
+    currency: Currency;
+    original_amount: string;
+    /** Tasas del día del gasto, congeladas al registrarlo. */
+    rates: RateSnapshot;
     description: string;
     date: string;
     expense_category_id: number | null;
@@ -189,7 +198,8 @@ export interface Rates {
     rate_date?: string | null;
 }
 
-export interface TripRates {
+/** Tasas congeladas en un mercado o un gasto: las de su día. */
+export interface RateSnapshot {
     bcv_usd: number | null;
     parallel_usd: number | null;
     bcv_eur: number | null;
@@ -228,7 +238,7 @@ export interface ShoppingTrip {
     total_usd: number;
     item_count: number;
     pending_price_count: number;
-    rates: TripRates;
+    rates: RateSnapshot;
     has_expense: boolean;
     /** Facturas escaneadas; puede haber varias si se compró en varios sitios. */
     receipts: ShoppingReceipt[];

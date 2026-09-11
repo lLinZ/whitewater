@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\ExchangeRate;
 use App\Models\ShoppingTrip;
 use App\Services\ExchangeRateService;
 use App\Services\ImageService;
@@ -87,19 +86,11 @@ class InvoiceScanController extends Controller
         }
 
         $trip = $this->draftTrip($draft);
-        $rate = $rates->latest();
 
         // Sumándose a un mercado se convierte con la tasa de ese mercado: el
         // mercado pasa sus dólares a bolívares con su propia tasa, y con otra
         // los bolívares de esta factura dejarían de cuadrar con la foto.
-        if ($trip && $trip->rate_bcv_usd !== null) {
-            $rate = new ExchangeRate([
-                'bcv_usd' => $trip->rate_bcv_usd,
-                'parallel_usd' => $trip->rate_parallel_usd,
-                'bcv_eur' => $trip->rate_bcv_eur,
-                'fetched_at' => $trip->created_at,
-            ]);
-        }
+        $tripRates = $trip?->rate_bcv_usd !== null ? $trip->rates : null;
 
         return Inertia::render('Market/Invoice', [
             'invoice' => $draft['data'],
@@ -111,12 +102,7 @@ class InvoiceScanController extends Controller
                 'item_count' => $trip->item_count,
                 'total_usd' => $trip->total_usd,
             ] : null,
-            'rates' => [
-                'bcv_usd' => $rate?->bcv_usd !== null ? (float) $rate->bcv_usd : null,
-                'parallel_usd' => $rate?->parallel_usd !== null ? (float) $rate->parallel_usd : null,
-                'bcv_eur' => $rate?->bcv_eur !== null ? (float) $rate->bcv_eur : null,
-                'fetched_at' => optional($rate?->fetched_at)->toIso8601String(),
-            ],
+            'rates' => $tripRates ?? $rates->latest()?->snapshot(),
         ]);
     }
 
@@ -148,18 +134,15 @@ class InvoiceScanController extends Controller
         $adding = $trip !== null;
 
         if (! $trip) {
-            $rate = $rates->latest();
-
-            $trip = ShoppingTrip::create([
+            $trip = new ShoppingTrip([
                 'name' => ($data['name'] ?? null) ?: 'Mercado '.$date->format('d/m'),
                 'store' => $store,
                 'status' => 'active',
-                'rate_bcv_usd' => $rate?->bcv_usd,
-                'rate_parallel_usd' => $rate?->parallel_usd,
-                'rate_bcv_eur' => $rate?->bcv_eur,
                 'created_by' => $request->user()->id,
                 'created_at' => $date,
             ]);
+            // Las mismas tasas con las que la revisión convirtió los precios.
+            $trip->snapshotRates($rates->latest()?->snapshot())->save();
         }
 
         $receipt = $trip->receipts()->create([

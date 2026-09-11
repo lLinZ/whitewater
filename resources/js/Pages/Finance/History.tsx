@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Button, Input, Select, SelectItem, Switch, useDisclosure } from '@heroui/react';
-import { Search, SlidersHorizontal, Trash2, X } from 'lucide-react';
+import { Search, SlidersHorizontal, X } from 'lucide-react';
 import AppLayout from '@/Layouts/AppLayout';
-import { Card, EmptyState, MemberBadge, SectionHeader } from '@/Components/ui/primitives';
+import { Card, EmptyState, SectionHeader } from '@/Components/ui/primitives';
 import ExpenseModal from '@/Components/ui/ExpenseModal';
-import ReceiptViewer from '@/Components/ui/ReceiptViewer';
-import { dayjs, formatDate, formatMoney, formatMoneyShort } from '@/lib/format';
+import ExpenseRow from '@/Components/ui/ExpenseRow';
+import { dayjs, formatMoney, formatMoneyShort } from '@/lib/format';
 import { accent } from '@/lib/accent';
 import { Expense, ExpenseCategory, Member, PageProps, Paginated } from '@/types';
 
@@ -51,6 +51,12 @@ export default function FinanceHistory({ filters, categories, members, expenses,
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [form.q]);
+
+    const del = (expense: Expense) => {
+        if (confirm(`¿Eliminar "${expense.description}"?`)) {
+            router.delete(`/finanzas/gastos/${expense.id}`, { preserveScroll: true });
+        }
+    };
 
     const apply = (next: Filters, page?: number) => {
         const query: Record<string, string | number> = {};
@@ -223,7 +229,9 @@ export default function FinanceHistory({ filters, categories, members, expenses,
                                     <ExpenseRow
                                         key={expense.id}
                                         expense={expense}
+                                        dateFormat="D MMM YYYY"
                                         onEdit={(e) => { setEditing(e); editModal.onOpen(); }}
+                                        onDelete={del}
                                     />
                                 ))}
                             </Card>
@@ -277,37 +285,3 @@ function groupByMonth(expenses: Expense[]): [string, Expense[]][] {
     return Array.from(groups.entries());
 }
 
-/** Tocar la fila abre la edición; ahí es donde se le adjunta la factura. */
-function ExpenseRow({ expense, onEdit }: { expense: Expense; onEdit: (expense: Expense) => void }) {
-    const del = () => {
-        if (confirm(`¿Eliminar "${expense.description}"?`)) {
-            router.delete(`/finanzas/gastos/${expense.id}`, { preserveScroll: true });
-        }
-    };
-
-    return (
-        <div className="flex items-center gap-3 px-4 py-3">
-            {expense.receipt_url ? (
-                <ReceiptViewer url={expense.receipt_url} alt={expense.description} size={38} />
-            ) : (
-                <div className="flex h-[38px] w-[38px] items-center justify-center rounded-full bg-content2 text-sm">
-                    {expense.category?.name?.[0] ?? '·'}
-                </div>
-            )}
-            <button onClick={() => onEdit(expense)} className="min-w-0 flex-1 text-left active:opacity-60">
-                <p className="truncate text-sm font-medium">{expense.description}</p>
-                <p className="truncate text-xs text-default-400">
-                    {expense.category?.name ?? 'Sin categoría'} · {formatDate(expense.date, 'D MMM YYYY')}
-                    {!expense.receipt_url && ' · sin comprobante'}
-                </p>
-            </button>
-            <MemberBadge member={expense.creator} size={22} />
-            <button onClick={() => onEdit(expense)} className="shrink-0 font-semibold active:opacity-60">
-                {formatMoney(expense.amount)}
-            </button>
-            <button onClick={del} aria-label="Eliminar gasto" className="shrink-0 text-default-300 active:text-rose-500">
-                <Trash2 size={16} />
-            </button>
-        </div>
-    );
-}

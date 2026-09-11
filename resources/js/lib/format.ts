@@ -3,6 +3,8 @@ import 'dayjs/locale/es';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import isoWeek from 'dayjs/plugin/isoWeek';
 
+import type { Currency, RateSnapshot } from '@/types';
+
 dayjs.extend(relativeTime);
 // isoWeek: lunes = 1 … domingo = 7, la misma numeración que usa el backend
 // para los días de las rutinas.
@@ -45,13 +47,6 @@ export function formatEur(value: number | null | undefined): string {
     return eur.format(value);
 }
 
-export interface RateLike {
-    bcv_usd: number | null;
-    parallel_usd: number | null;
-    bcv_eur: number | null;
-}
-
-/** Convierte un monto en USD a Bs (BCV), Bs (USDT/paralelo) y EUR. */
 /**
  * Un monto en dólares BCV, visto de las tres formas en que se paga.
  *
@@ -63,7 +58,7 @@ export interface RateLike {
  * me cuesta esto si pago con USDT?", no "¿cuántos bolívares serían a otra
  * tasa?".
  */
-export function convertUsd(usd: number, r?: RateLike | null) {
+export function convertUsd(usd: number, r?: RateSnapshot | null) {
     const bcvUsd = r?.bcv_usd ?? null;
     const parUsd = r?.parallel_usd ?? null;
     const bcvEur = r?.bcv_eur ?? null;
@@ -78,6 +73,50 @@ export function convertUsd(usd: number, r?: RateLike | null) {
 export function formatUsdt(value: number | null | undefined): string {
     if (value === null || value === undefined || !Number.isFinite(value)) return '—';
     return `${bs.format(value)} USDT`;
+}
+
+/**
+ * Pasa a dólares BCV un monto pagado en otra moneda: el camino inverso de
+ * convertUsd, y la misma cuenta que ExchangeRate::toUsd en el servidor.
+ * null si falta la tasa que hace falta.
+ */
+export function toUsd(amount: number, currency: Currency, r?: RateSnapshot | null): number | null {
+    if (currency === 'USD') return amount;
+    const bcvUsd = r?.bcv_usd ?? null;
+    const bolivares = {
+        VES: amount,
+        USDT: r?.parallel_usd ? amount * r.parallel_usd : null,
+        EUR: r?.bcv_eur ? amount * r.bcv_eur : null,
+    }[currency];
+    return bolivares !== null && bcvUsd ? bolivares / bcvUsd : null;
+}
+
+/** Un monto en su moneda, con el formato de esa moneda. */
+export function formatIn(value: number | null | undefined, currency: Currency): string {
+    switch (currency) {
+        case 'VES': return formatBs(value);
+        case 'USDT': return formatUsdt(value);
+        case 'EUR': return formatEur(value);
+        default: return value === null || value === undefined ? '—' : formatMoney(value);
+    }
+}
+
+/**
+ * Lo pagado visto en las cuatro monedas, con las tasas congeladas del gasto.
+ *
+ * La moneda en que se pagó muestra lo anotado tal cual: recalcularla desde
+ * los dólares, ya redondeados a céntimos, movería unos bolívares.
+ */
+export function paidEquivalents(paid: {
+    amount: number | string;
+    currency: Currency;
+    original_amount: number | string;
+    rates: RateSnapshot | null;
+}) {
+    const eq = convertUsd(Number(paid.amount), paid.rates);
+    const original = Number(paid.original_amount);
+    const key = ({ USD: 'usd', VES: 'bcv', USDT: 'usdt', EUR: 'eur' } as const)[paid.currency];
+    return { ...eq, [key]: original };
 }
 
 /**

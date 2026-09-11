@@ -2,18 +2,15 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\HasRateSnapshot;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 
 class ShoppingTrip extends Model
 {
-    protected $guarded = [];
+    use HasRateSnapshot;
 
-    protected $casts = [
-        'rate_bcv_usd' => 'decimal:4',
-        'rate_parallel_usd' => 'decimal:4',
-        'rate_bcv_eur' => 'decimal:4',
-    ];
+    protected $guarded = [];
 
     protected $appends = ['total_usd', 'item_count', 'pending_price_count'];
 
@@ -74,11 +71,8 @@ class ShoppingTrip extends Model
      */
     public function totals(): array
     {
-        return ExchangeRate::convert(
-            $this->total_usd,
-            $this->rate_bcv_usd ? (float) $this->rate_bcv_usd : null,
-            $this->rate_parallel_usd ? (float) $this->rate_parallel_usd : null,
-            $this->rate_bcv_eur ? (float) $this->rate_bcv_eur : null,
-        );
+        $rates = $this->rates;
+
+        return ExchangeRate::convert($this->total_usd, $rates['bcv_usd'], $rates['parallel_usd'], $rates['bcv_eur']);
     }
 }

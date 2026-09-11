@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\ExchangeRate;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
@@ -21,6 +22,30 @@ class ExchangeRateService
     public function latest(): ?ExchangeRate
     {
         return ExchangeRate::orderByDesc('fetched_at')->orderByDesc('id')->first();
+    }
+
+    /**
+     * La tasa vigente un día dado: la última obtenida con vigencia ese día o
+     * antes.
+     *
+     * Cuenta la fecha de vigencia (rate_date) y no la de descarga: el BCV
+     * publica por la tarde la tasa del día hábil siguiente, y un gasto del
+     * viernes no debe convertirse con la del lunes que salió el viernes a las
+     * 14:00. Si la tasa no trae fecha, vale el día en que se descargó.
+     *
+     * Para un día anterior a la primera tasa guardada se usa esa primera: es
+     * la más cercana que hay.
+     */
+    public function forDate(CarbonInterface|string $date): ?ExchangeRate
+    {
+        $day = Carbon::parse($date)->toDateString();
+        // DATE() también normaliza el formato: SQLite guarda las fechas con hora.
+        $effective = 'DATE(COALESCE(rate_date, fetched_at))';
+
+        return ExchangeRate::whereRaw("{$effective} <= ?", [$day])
+            ->orderByRaw("{$effective} DESC")->orderByDesc('fetched_at')->orderByDesc('id')
+            ->first()
+            ?? ExchangeRate::orderByRaw("{$effective} ASC")->orderBy('fetched_at')->orderBy('id')->first();
     }
 
     /**
