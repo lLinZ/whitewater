@@ -10,7 +10,9 @@ use App\Models\ExpenseCategory;
 use App\Services\ExchangeRateService;
 use App\Services\ImageService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
+use Throwable;
 
 class MarketController extends Controller
 {
@@ -168,22 +170,42 @@ class MarketController extends Controller
             'as_expense' => 'nullable|boolean',
         ]);
 
-        $trip->update(['status' => 'done']);
+        // Un mercado ya terminado vuelve aquí para registrar el gasto que no
+        // se registró al cerrarlo.
+        $wasDone = $trip->status === 'done';
+        $copies = [];
 
-        if (! empty($data['as_expense']) && $trip->total_usd > 0 && ! $trip->expense_id) {
-            $category = ExpenseCategory::firstOrCreate(
-                ['name' => 'Mercado'],
-                ['color' => '#7c3aed']
-            );
+        try {
+            // Todo o nada: si el gasto falla, el mercado sigue abierto y se
+            // puede volver a terminar. Cerrarlo primero lo dejaba "Terminado"
+            // sin gasto y sin botón para reintentar.
+            DB::transaction(function () use ($data, $trip, $request, $images, &$copies) {
+                $trip->update(['status' => 'done']);
 
-            $expenses = $this->createExpenses($trip, $category, $request->user()->id, $images);
+                if (! empty($data['as_expense']) && $trip->total_usd > 0 && ! $trip->expense_id) {
+                    $category = ExpenseCategory::firstOrCreate(
+                        ['name' => 'Mercado'],
+                        ['color' => '#7c3aed']
+                    );
 
-            // Marca de "ya se registró": con varias facturas hay varios
-            // gastos, y basta con apuntar al primero para no duplicarlos.
-            $trip->update(['expense_id' => $expenses[0]->id]);
+                    $expenses = $this->createExpenses($trip, $category, $request->user()->id, $images, $copies);
+
+                    // Marca de "ya se registró": con varias facturas hay varios
+                    // gastos, y basta con apuntar al primero para no duplicarlos.
+                    $trip->update(['expense_id' => $expenses[0]->id]);
+                }
+            });
+        } catch (Throwable $e) {
+            // Las copias de las facturas no viven en la base de datos: si el
+            // gasto no llegó a guardarse, sobran.
+            collect($copies)->each(fn ($path) => $images->delete($path));
+
+            throw $e;
         }
 
-        return redirect()->route('market.index')->with('celebrate', 'Mercado terminado 🛒');
+        return $wasDone
+            ? redirect()->route('market.show', $trip)->with('success', 'Registrado en Finanzas')
+            : redirect()->route('market.index')->with('celebrate', 'Mercado terminado 🛒');
     }
 
     /**
@@ -193,9 +215,10 @@ class MarketController extends Controller
      * Finanzas deben verse separados y con su foto. Con una sola factura (o
      * ninguna) sale un único gasto, igual que siempre.
      *
+     * @param  list<string>  $copies  recibe las rutas de las fotos copiadas
      * @return list<Expense>
      */
-    private function createExpenses(ShoppingTrip $trip, ExpenseCategory $category, int $userId, ImageService $images): array
+    private function createExpenses(ShoppingTrip $trip, ExpenseCategory $category, int $userId, ImageService $images, array &$copies): array
     {
         $trip->load(['items', 'receipts']);
 
@@ -214,8 +237,17 @@ class MarketController extends Controller
         $groups = $groups->filter(fn ($group) => $group['amount'] > 0)->values();
         $split = $groups->count() > 1;
 
-        return $groups->map(function ($group) use ($trip, $category, $userId, $images, $split) {
+        return $groups->map(function ($group) use ($trip, $category, $userId, $images, $split, &$copies) {
             $receipt = $group['receipt'];
+
+            // El gasto se queda con su propia copia de la factura: cada
+            // registro es dueño de su archivo y borrar uno no debe dejar al
+            // otro sin comprobante.
+            $copy = $images->copy($receipt?->receipt_path);
+
+            if ($copy) {
+                $copies[] = $copy;
+            }
 
             return Expense::create([
                 'amount' => $group['amount'],
@@ -226,10 +258,7 @@ class MarketController extends Controller
                 // La fecha de la factura es cuándo salió el dinero.
                 'date' => $receipt?->date?->toDateString() ?? now()->toDateString(),
                 'created_by' => $userId,
-                // El gasto se queda con su propia copia de la factura: cada
-                // registro es dueño de su archivo y borrar uno no debe dejar
-                // al otro sin comprobante.
-                'receipt_path' => $images->copy($receipt?->receipt_path),
+                'receipt_path' => $copy,
             ]);
         })->all();
     }

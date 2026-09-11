@@ -290,6 +290,24 @@ export default function MarketShow({ trip, previous, catalog }: Props) {
                 )}
             </Card>
 
+            {/* Terminado sin gasto: se cerró sin marcar la opción, o el gasto falló */}
+            {trip.status === 'done' && !trip.has_expense && trip.total_usd > 0 && (
+                <Card className="mt-3 flex items-center gap-3 !py-3">
+                    <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">Este mercado no está en Finanzas</p>
+                        <p className="text-xs text-default-400">
+                            {expenseCount > 1 ? `Se registran ${expenseCount} gastos, uno por factura.` : 'Se registra como gasto de Mercado.'}
+                        </p>
+                    </div>
+                    <Button
+                        size="sm" color="primary" radius="full" variant="flat"
+                        onPress={() => router.post(`/mercado/${trip.id}/terminar`, { as_expense: true }, { preserveScroll: true })}
+                    >
+                        Registrar como gasto
+                    </Button>
+                </Card>
+            )}
+
             {/* Facturas: puede haber una por supermercado */}
             {trip.receipts.length > 0 && (
                 <>

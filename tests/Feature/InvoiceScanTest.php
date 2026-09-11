@@ -376,6 +376,40 @@ test('terminar con dos facturas registra un gasto por factura, cada uno con su f
     expect($trip->fresh()->expense_id)->toBe($expenses[0]->id);
 });
 
+test('si el gasto falla, el mercado sigue abierto y no quedan copias sueltas', function () {
+    $trip = tripWithTwoInvoices($this->user);
+    // El segundo gasto revienta: el primero ya se había creado y su foto copiado.
+    $created = 0;
+    Expense::creating(function () use (&$created) {
+        if (++$created === 2) {
+            throw new RuntimeException('La base de datos dijo que no');
+        }
+    });
+
+    actingAs($this->user)->post("/mercado/{$trip->id}/terminar", ['as_expense' => true])
+        ->assertServerError();
+
+    // Nada a medias: sin gastos, abierto para reintentar, y en el disco solo
+    // las dos facturas del mercado.
+    expect(Expense::count())->toBe(0);
+    expect($trip->fresh()->status)->toBe('active');
+    expect($trip->fresh()->expense_id)->toBeNull();
+    expect(Storage::disk('public')->allFiles('receipts'))->toHaveCount(2);
+});
+
+test('un mercado terminado sin gasto se puede registrar después', function () {
+    // Así quedó el mercado que se cerró cuando el gasto fallaba.
+    $trip = tripWithTwoInvoices($this->user);
+    $trip->update(['status' => 'done']);
+
+    actingAs($this->user)->post("/mercado/{$trip->id}/terminar", ['as_expense' => true])
+        ->assertRedirect("/mercado/{$trip->id}")
+        ->assertSessionHas('success');
+
+    expect(Expense::count())->toBe(2);
+    expect($trip->fresh()->expense_id)->not->toBeNull();
+});
+
 test('terminar dos veces no duplica los gastos', function () {
     $trip = tripWithTwoInvoices($this->user);
 
