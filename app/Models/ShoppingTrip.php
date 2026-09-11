@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 
 class ShoppingTrip extends Model
 {
@@ -37,22 +38,27 @@ class ShoppingTrip extends Model
         return $this->belongsTo(Expense::class);
     }
 
+    /*
+     * Las sumas y conteos sin productos cargados van con reorder(): la
+     * relación items() trae un ORDER BY, y MySQL (ONLY_FULL_GROUP_BY) rechaza
+     * una suma que lo arrastra. SQLite lo acepta, así que en las pruebas no
+     * se notaba; en el servidor tumbaba "Terminar" con un 500.
+     */
+
     public function getTotalUsdAttribute(): float
     {
         if ($this->relationLoaded('items')) {
             return round($this->items->sum(fn ($i) => (float) $i->unit_price_usd * (float) $i->quantity), 2);
         }
 
-        return (float) $this->items()
-            ->selectRaw('COALESCE(SUM(unit_price_usd * quantity), 0) as t')
-            ->value('t');
+        return round((float) $this->items()->reorder()->sum(DB::raw('unit_price_usd * quantity')), 2);
     }
 
     public function getItemCountAttribute(): int
     {
         return $this->relationLoaded('items')
             ? $this->items->count()
-            : $this->items()->count();
+            : $this->items()->reorder()->count();
     }
 
     /** Productos anotados sin precio todavía (se completan al llegar a casa). */
@@ -60,7 +66,7 @@ class ShoppingTrip extends Model
     {
         return $this->relationLoaded('items')
             ? $this->items->whereNull('unit_price_usd')->count()
-            : $this->items()->whereNull('unit_price_usd')->count();
+            : $this->items()->reorder()->whereNull('unit_price_usd')->count();
     }
 
     /**
